@@ -81,6 +81,12 @@ function navigateTo(page) {
 
 // ========== 初始化 ==========
 function initApp() {
+  // TODO: 临时跳过登录，方便预览页面效果，后续恢复登录验证
+  currentUser = { email: 'admin@yicai.app' };
+  showApp();
+  navigateTo('dashboard');
+  return;
+
   const session = loadSession();
   if (session) {
     showApp();
