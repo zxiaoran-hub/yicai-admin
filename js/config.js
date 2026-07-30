@@ -45,16 +45,29 @@ const supabase = {
       url += '?' + queryParams.join('&');
     }
 
-    const response = await fetch(url, {
-      headers: {
-        'apikey': this.key,
-        'Authorization': `Bearer ${this.key}`,
-        'Content-Type': 'application/json'
-      }
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-    if (!response.ok) throw new Error(`Query failed: ${response.status}`);
-    return response.json();
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'apikey': this.key,
+          'Authorization': `Bearer ${this.key}`,
+          'Content-Type': 'application/json'
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        console.warn(`Query ${table} failed: ${response.status}`);
+        return [];
+      }
+      return response.json();
+    } catch (err) {
+      clearTimeout(timeoutId);
+      console.warn(`Query ${table} error:`, err.message);
+      return [];
+    }
   },
 
   async rpc(functionName, params = {}) {
