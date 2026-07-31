@@ -1,6 +1,6 @@
 // ========== 供应商管理 ==========
 let suppliersPage = 1;
-let suppliersFilter = { status: '', industry: '', search: '' };
+let suppliersFilter = { status: '', industry: '', search: '', featured: '' };
 const suppliersPageSize = 20;
 
 async function renderSuppliers() {
@@ -23,6 +23,11 @@ async function renderSuppliers() {
     }
     if (suppliersFilter.industry) {
       filtered = filtered.filter(s => s.industry === suppliersFilter.industry);
+    }
+    if (suppliersFilter.featured === 'yes') {
+      filtered = filtered.filter(s => s.is_featured === true);
+    } else if (suppliersFilter.featured === 'no') {
+      filtered = filtered.filter(s => s.is_featured !== true);
     }
     if (suppliersFilter.search) {
       const q = suppliersFilter.search.toLowerCase();
@@ -52,6 +57,11 @@ async function renderSuppliers() {
             <option value="">全部行业</option>
             ${industries.map(i => `<option value="${i}" ${suppliersFilter.industry === i ? 'selected' : ''}>${i}</option>`).join('')}
           </select>
+          <select onchange="supplierFilterFeatured(this.value)">
+            <option value="">全部</option>
+            <option value="yes" ${suppliersFilter.featured === 'yes' ? 'selected' : ''}>⭐ 精选</option>
+            <option value="no" ${suppliersFilter.featured === 'no' ? 'selected' : ''}>非精选</option>
+          </select>
           <span style="margin-left:auto;font-size:13px;color:var(--gray-500);">共 ${filtered.length} 条</span>
           <button class="btn btn-primary" onclick="showAddSupplierForm()">+ 新增供应商</button>
         </div>
@@ -62,21 +72,26 @@ async function renderSuppliers() {
               <th>联系人</th>
               <th>行业</th>
               <th>认证状态</th>
+              <th>精选</th>
               <th>注册时间</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
-            ${pageData.length === 0 ? `<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--gray-400)">暂无数据</td></tr>` : ''}
+            ${pageData.length === 0 ? `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--gray-400)">暂无数据</td></tr>` : ''}
             ${pageData.map(s => `
               <tr>
                 <td style="font-weight:500;color:var(--gray-900)">${s.company_name || '-'}</td>
                 <td>${s.contact_name || '-'}</td>
                 <td>${s.industry || '-'}</td>
                 <td>${getStatusBadge(s.verification_status)}</td>
+                <td>${s.is_featured ? '<span style="color:#f59e0b;font-weight:500;">⭐ 精选</span>' : '<span style="color:var(--gray-400);">-</span>'}</td>
                 <td>${formatDate(s.created_at)}</td>
                 <td>
                   <button class="btn btn-sm btn-outline" onclick="viewSupplierDetail('${s.auth_id}')">详情</button>
+                  ${s.verification_status === 'verified' ? `
+                    <button class="btn btn-sm ${s.is_featured ? 'btn-outline' : 'btn-warning'}" onclick="toggleFeatured('${s.auth_id}', ${!s.is_featured})" style="${s.is_featured ? '' : 'background:#f59e0b;color:white;border:none;'}">${s.is_featured ? '取消精选' : '设为精选'}</button>
+                  ` : ''}
                   ${s.verification_status === 'pending' ? `
                     <button class="btn btn-sm btn-success" onclick="verifySupplier('${s.auth_id}', 'verified')">通过</button>
                     <button class="btn btn-sm btn-danger" onclick="verifySupplier('${s.auth_id}', 'rejected')">拒绝</button>
@@ -124,6 +139,35 @@ function supplierFilterIndustry(val) {
   suppliersFilter.industry = val;
   suppliersPage = 1;
   renderSuppliers();
+}
+
+function supplierFilterFeatured(val) {
+  suppliersFilter.featured = val;
+  suppliersPage = 1;
+  renderSuppliers();
+}
+
+// ==================== 精选供应商 ====================
+async function toggleFeatured(authId, setFeatured) {
+  const action = setFeatured ? '设为精选' : '取消精选';
+  showConfirm(
+    `确认${action}`,
+    `确定要${action}该供应商吗？`,
+    async () => {
+      try {
+        const updateData = {
+          is_featured: setFeatured,
+          featured_at: setFeatured ? new Date().toISOString() : null,
+          updated_at: new Date().toISOString()
+        };
+        await supabase.update('suppliers', updateData, { auth_id: authId });
+        showToast(`${action}成功`);
+        renderSuppliers();
+      } catch (err) {
+        showToast(`${action}失败: ${err.message}`, true);
+      }
+    }
+  );
 }
 
 window.suppliersGoToPage = function(page) {
