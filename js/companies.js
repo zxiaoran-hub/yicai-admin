@@ -82,7 +82,7 @@ async function renderCompanies() {
             ${pageData.length === 0 ? '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--gray-400)">暂无公司数据，点击「新建公司」创建</td></tr>' : ''}
             ${pageData.map(c => `
               <tr>
-                <td style="font-weight:500;color:var(--gray-900)">${c.name || '-'}</td>
+                <td style="font-weight:500;color:var(--gray-900)">${escapeHtml(c.name || '-'}</td>
                 <td>${typeBadge(c.type || c.company_type)}</td>
                 <td>${statusBadge(c.status)}</td>
                 <td>${formatDate(c.created_at)}</td>
@@ -159,14 +159,14 @@ function renderCompaniesTable(data) {
   };
   tbody.innerHTML = data.slice(0, companiesPageSize).map(c => `
     <tr>
-      <td style="font-weight:500;color:var(--gray-900)">${c.name || '-'}</td>
+      <td style="font-weight:500;color:var(--gray-900)">${escapeHtml(c.name || '-')}</td>
       <td>${typeBadge(c.type || c.company_type)}</td>
       <td>${statusBadge(c.status)}</td>
       <td>${formatDate(c.created_at)}</td>
       <td>
         <button class="btn btn-sm btn-outline" onclick="openEditCompany('${c.id}')">编辑</button>
         ${c.type !== 'platform' ? `<button class="btn btn-sm btn-primary" onclick="openCreateCompanyAdmin('${c.id}')">创建管理员</button>` : ''}
-        <button class="btn btn-sm btn-danger" onclick="deleteCompany('${c.id}','${(c.name || '').replace(/'/g, "\\'")}')">删除</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteCompany('${c.id}','${escapeHtml(c.name || '').replace(/'/g, "\\'")}')">删除</button>
       </td>
     </tr>
   `).join('');
