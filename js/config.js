@@ -162,6 +162,24 @@ const supabase = {
     return response.json();
   },
 
+  async authSignUp(email, password) {
+    const url = `${this.url}/auth/v1/signup`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'apikey': this.key,
+        'Authorization': `Bearer ${this.key}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ email, password })
+    });
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error_description || err.msg || '注册失败');
+    }
+    return response.json();
+  },
+
   async getCount(table, filter = {}) {
     let url = `${this.url}/rest/v1/${table}?select=count&count=exact`;
     const queryParams = [];

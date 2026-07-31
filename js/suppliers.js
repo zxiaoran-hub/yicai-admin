@@ -53,6 +53,7 @@ async function renderSuppliers() {
             ${industries.map(i => `<option value="${i}" ${suppliersFilter.industry === i ? 'selected' : ''}>${i}</option>`).join('')}
           </select>
           <span style="margin-left:auto;font-size:13px;color:var(--gray-500);">共 ${filtered.length} 条</span>
+          <button class="btn btn-primary" onclick="showAddSupplierForm()">+ 新增供应商</button>
         </div>
         <table>
           <thead>
@@ -262,4 +263,136 @@ async function verifySupplier(authId, status) {
       }
     }
   );
+}
+
+// ==================== 新增供应商 ====================
+function showAddSupplierForm() {
+  const content = `
+    <form id="add-supplier-form" onsubmit="handleAddSupplier(event)" style="display:flex;flex-direction:column;gap:16px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div>
+          <label style="display:block;font-size:13px;font-weight:500;color:var(--gray-700);margin-bottom:4px;">公司名称 <span style="color:red;">*</span></label>
+          <input type="text" id="supplier-company-name" required placeholder="如：广州XX化妆品有限公司" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:6px;font-size:14px;">
+        </div>
+        <div>
+          <label style="display:block;font-size:13px;font-weight:500;color:var(--gray-700);margin-bottom:4px;">简称</label>
+          <input type="text" id="supplier-short-name" placeholder="如：广州XX" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:6px;font-size:14px;">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div>
+          <label style="display:block;font-size:13px;font-weight:500;color:var(--gray-700);margin-bottom:4px;">联系人 <span style="color:red;">*</span></label>
+          <input type="text" id="supplier-contact-name" required placeholder="联系人姓名" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:6px;font-size:14px;">
+        </div>
+        <div>
+          <label style="display:block;font-size:13px;font-weight:500;color:var(--gray-700);margin-bottom:4px;">联系电话</label>
+          <input type="text" id="supplier-contact-phone" placeholder="手机/座机" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:6px;font-size:14px;">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div>
+          <label style="display:block;font-size:13px;font-weight:500;color:var(--gray-700);margin-bottom:4px;">邮箱 <span style="color:red;">*</span></label>
+          <input type="email" id="supplier-contact-email" required placeholder="用于登录账号" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:6px;font-size:14px;">
+        </div>
+        <div>
+          <label style="display:block;font-size:13px;font-weight:500;color:var(--gray-700);margin-bottom:4px;">初始密码 <span style="color:red;">*</span></label>
+          <input type="text" id="supplier-initial-password" required placeholder="至少6位" value="yicai123" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:6px;font-size:14px;">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div>
+          <label style="display:block;font-size:13px;font-weight:500;color:var(--gray-700);margin-bottom:4px;">行业/类目 <span style="color:red;">*</span></label>
+          <select id="supplier-industry" required style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:6px;font-size:14px;">
+            <option value="">请选择</option>
+            <option value="护肤品">护肤品</option>
+            <option value="彩妆">彩妆</option>
+            <option value="香水">香水</option>
+            <option value="洗护">洗护</option>
+            <option value="包材">包材</option>
+            <option value="原料">原料</option>
+            <option value="OEM/ODM">OEM/ODM</option>
+            <option value="其他">其他</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:13px;font-weight:500;color:var(--gray-700);margin-bottom:4px;">所在地区</label>
+          <input type="text" id="supplier-region" placeholder="如：广东广州" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:6px;font-size:14px;">
+        </div>
+      </div>
+      <div>
+        <label style="display:block;font-size:13px;font-weight:500;color:var(--gray-700);margin-bottom:4px;">公司简介</label>
+        <textarea id="supplier-description" rows="3" placeholder="简要介绍公司业务范围、优势等" style="width:100%;padding:8px 12px;border:1px solid var(--gray-300);border-radius:6px;font-size:14px;resize:vertical;"></textarea>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+        <button type="button" class="btn btn-outline" onclick="closeModal()">取消</button>
+        <button type="submit" class="btn btn-primary">创建供应商</button>
+      </div>
+    </form>
+  `;
+  showModal('新增供应商', content, '');
+}
+
+async function handleAddSupplier(event) {
+  event.preventDefault();
+  
+  const companyName = document.getElementById('supplier-company-name')?.value?.trim();
+  const shortName = document.getElementById('supplier-short-name')?.value?.trim();
+  const contactName = document.getElementById('supplier-contact-name')?.value?.trim();
+  const contactPhone = document.getElementById('supplier-contact-phone')?.value?.trim();
+  const contactEmail = document.getElementById('supplier-contact-email')?.value?.trim();
+  const initialPassword = document.getElementById('supplier-initial-password')?.value;
+  const industry = document.getElementById('supplier-industry')?.value;
+  const region = document.getElementById('supplier-region')?.value?.trim();
+  const description = document.getElementById('supplier-description')?.value?.trim();
+
+  if (!companyName || !contactName || !contactEmail || !initialPassword || !industry) {
+    showToast('请填写所有必填字段');
+    return;
+  }
+
+  if (initialPassword.length < 6) {
+    showToast('初始密码至少6位');
+    return;
+  }
+
+  try {
+    // 第一步：创建 Supabase Auth 账号
+    console.log('[AddSupplier] Creating auth user for:', contactEmail);
+    const signUpResult = await supabase.authSignUp(contactEmail, initialPassword);
+    console.log('[AddSupplier] signUp result:', signUpResult);
+
+    if (!signUpResult.user) {
+      showToast('创建账号失败');
+      return;
+    }
+
+    const authUserId = signUpResult.user.id;
+
+    // 第二步：插入 suppliers 表
+    const supplierData = {
+      user_id: authUserId,
+      company_name: companyName,
+      short_name: shortName || null,
+      category: [industry],
+      region: region || '',
+      description: description || '',
+      contact_name: contactName,
+      contact_phone: contactPhone || '',
+      contact_email: contactEmail,
+      is_verified: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    console.log('[AddSupplier] Inserting supplier:', supplierData);
+    const insertResult = await supabase.insert('suppliers', supplierData);
+    console.log('[AddSupplier] Insert result:', insertResult);
+
+    showToast('供应商创建成功！账号：' + contactEmail + '，密码：' + initialPassword);
+    closeModal();
+    renderSuppliers();
+  } catch (err) {
+    console.error('[AddSupplier] Error:', err);
+    showToast('创建失败：' + (err.message || '请稍后重试'));
+  }
 }
