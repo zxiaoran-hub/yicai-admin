@@ -2,6 +2,9 @@
 const SUPABASE_URL = 'https://spb-m06skr4cysol4lwz.supabase.opentrust.net';
 const SUPABASE_ANON_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiIsInJlZiI6InNwYi1tMDZza3I0Y3lzb2w0bHd6IiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE3ODUzNzcwNjIsImV4cCI6MjEwMDk1MzA2Mn0.2OO2jmTetq6vOE4xTRruNMXVUI89ATMIStpIl4ul3kI';
 
+// 设置环境为生产环境（移除console输出）
+window.ENV = 'production';
+
 // 检查 token 是否即将过期（5分钟内过期视为已过期）
 function isTokenExpired(token) {
   try {
@@ -10,10 +13,10 @@ function isTokenExpired(token) {
   } catch { return true; }
 }
 
-// 刷新 token
+// 刷新 token - 使用secureStorage
 async function refreshTokenIfNeeded() {
-  const accessToken = localStorage.getItem('yicai_admin_token');
-  const refreshTok = localStorage.getItem('yicai_admin_refresh');
+  const accessToken = secureStorage.getToken();
+  const refreshTok = secureStorage.getRefreshToken();
   if (!accessToken || !refreshTok) return;
   if (!isTokenExpired(accessToken)) return;
 
@@ -25,28 +28,27 @@ async function refreshTokenIfNeeded() {
     });
     if (resp.ok) {
       const data = await resp.json();
-      localStorage.setItem('yicai_admin_token', data.access_token);
-      localStorage.setItem('yicai_admin_refresh', data.refresh_token);
+      secureStorage.setToken(data.access_token, data.refresh_token);
     } else {
       // refresh 也失败了，清除登录态
-      localStorage.removeItem('yicai_admin_token');
-      localStorage.removeItem('yicai_admin_refresh');
+      secureStorage.clearToken();
       if (typeof logout === 'function') logout();
     }
   } catch (e) {
-    console.warn('Token refresh failed:', e);
+    logger.warn('Token refresh failed:', e);
   }
 }
 
 // 获取当前认证 token（登录后用用户token，否则用anon key）
 async function getAuthHeaders() {
   await refreshTokenIfNeeded();
-  const userToken = localStorage.getItem('yicai_admin_token');
+  const userToken = secureStorage.getToken();
   const authToken = userToken || SUPABASE_ANON_KEY;
   return {
     'apikey': SUPABASE_ANON_KEY,
     'Authorization': `Bearer ${authToken}`,
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    'X-CSRF-Token': getCsrfToken()
   };
 }
 

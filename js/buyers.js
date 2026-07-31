@@ -69,12 +69,12 @@ async function renderBuyers() {
             ${pageData.length === 0 ? `<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--gray-400)">暂无数据</td></tr>` : ''}
             ${pageData.map(b => `
               <tr>
-                <td style="font-weight:500;color:var(--gray-900)">${b.name || '-'}</td>
-                <td>${b.admin_email || '-'}</td>
+                <td style="font-weight:500;color:var(--gray-900)">${escapeHtml(b.name) || '-'}</td>
+                <td>${escapeHtml(b.admin_email) || '-'}</td>
                 <td>${getStatusBadge(b.status || 'active')}</td>
                 <td>${formatDate(b.created_at)}</td>
                 <td>
-                  <button class="btn btn-sm btn-outline" onclick="viewBuyerDetail('${b.id}')">详情</button>
+                  <button class="btn btn-sm btn-outline" onclick="viewBuyerDetail('${escapeHtml(b.id)}')">详情</button>
                 </td>
               </tr>
             `).join('')}
@@ -91,7 +91,7 @@ async function renderBuyers() {
       'buyersGoToPage'
     );
   } catch (err) {
-    body.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>加载失败：${err.message}</p></div>`;
+    body.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>加载失败：${escapeHtml(err.message)}</p></div>`;
   }
 }
 
@@ -258,7 +258,7 @@ window.handleAddBuyer = async function(event) {
     await supabase.insert('user_roles', userRoleData);
 
     const msg = isNewAccount
-      ? `企业采购方创建成功！管理员账号：${adminEmail}，密码：${initialPassword}`
+      ? `✅ 企业采购方创建成功！管理员账号：${escapeHtml(adminEmail)}，请牢记您设置的密码`
       : `企业采购方创建成功！已关联现有账号：${adminEmail}`;
     showToast(msg);
     closeModal();

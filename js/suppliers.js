@@ -81,23 +81,23 @@ async function renderSuppliers() {
             ${pageData.length === 0 ? `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--gray-400)">暂无数据</td></tr>` : ''}
             ${pageData.map(s => `
               <tr>
-                <td style="font-weight:500;color:var(--gray-900)">${s.company_name || '-'}</td>
-                <td>${s.contact_name || '-'}</td>
-                <td>${s.industry || '-'}</td>
+                <td style="font-weight:500;color:var(--gray-900)">${escapeHtml(s.company_name) || '-'}</td>
+                <td>${escapeHtml(s.contact_name) || '-'}</td>
+                <td>${escapeHtml(s.industry) || '-'}</td>
                 <td>${getStatusBadge(s.verification_status)}</td>
                 <td>${s.is_featured ? '<span style="color:#f59e0b;font-weight:500;">⭐ 精选</span>' : '<span style="color:var(--gray-400);">-</span>'}</td>
                 <td>${formatDate(s.created_at)}</td>
                 <td>
-                  <button class="btn btn-sm btn-outline" onclick="viewSupplierDetail('${s.auth_id}')">详情</button>
+                  <button class="btn btn-sm btn-outline" onclick="viewSupplierDetail('${escapeHtml(s.auth_id)}')">详情</button>
                   ${s.verification_status === 'verified' ? `
-                    <button class="btn btn-sm ${s.is_featured ? 'btn-outline' : 'btn-warning'}" onclick="toggleFeatured('${s.auth_id}', ${!s.is_featured})" style="${s.is_featured ? '' : 'background:#f59e0b;color:white;border:none;'}">${s.is_featured ? '取消精选' : '设为精选'}</button>
+                    <button class="btn btn-sm ${s.is_featured ? 'btn-outline' : 'btn-warning'}" onclick="toggleFeatured('${escapeHtml(s.auth_id)}', ${!s.is_featured})" style="${s.is_featured ? '' : 'background:#f59e0b;color:white;border:none;'}">${s.is_featured ? '取消精选' : '设为精选'}</button>
                   ` : ''}
                   ${s.verification_status === 'pending' ? `
-                    <button class="btn btn-sm btn-success" onclick="verifySupplier('${s.auth_id}', 'verified')">通过</button>
-                    <button class="btn btn-sm btn-danger" onclick="verifySupplier('${s.auth_id}', 'rejected')">拒绝</button>
+                    <button class="btn btn-sm btn-success" onclick="verifySupplier('${escapeHtml(s.auth_id)}', 'verified')">通过</button>
+                    <button class="btn btn-sm btn-danger" onclick="verifySupplier('${escapeHtml(s.auth_id)}', 'rejected')">拒绝</button>
                   ` : ''}
                   ${s.verification_status === 'rejected' ? `
-                    <button class="btn btn-sm btn-success" onclick="verifySupplier('${s.auth_id}', 'verified')">重新认证</button>
+                    <button class="btn btn-sm btn-success" onclick="verifySupplier('${escapeHtml(s.auth_id)}', 'verified')">重新认证</button>
                   ` : ''}
                 </td>
               </tr>

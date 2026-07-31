@@ -5,13 +5,12 @@ let sidebarOpen = false;
 
 // ========== 认证 ==========
 function saveSession(data) {
-  localStorage.setItem('yicai_admin_token', data.access_token);
-  localStorage.setItem('yicai_admin_refresh', data.refresh_token);
+  secureStorage.setToken(data.access_token, data.refresh_token);
   currentUser = data.user;
 }
 
 function loadSession() {
-  const token = localStorage.getItem('yicai_admin_token');
+  const token = secureStorage.getToken();
   if (!token) return null;
   // 简单解析JWT获取用户信息
   try {
@@ -19,14 +18,13 @@ function loadSession() {
     currentUser = { id: payload.sub, email: payload.email };
     return { access_token: token, user: currentUser };
   } catch (e) {
-    localStorage.clear();
+    secureStorage.clearToken();
     return null;
   }
 }
 
 function logout() {
-  localStorage.removeItem('yicai_admin_token');
-  localStorage.removeItem('yicai_admin_refresh');
+  secureStorage.clearToken();
   currentUser = null;
   showLogin();
 }
