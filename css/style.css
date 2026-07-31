@@ -988,3 +988,114 @@ tbody tr:last-child td {
 .clickable-row:hover {
   background: var(--primary-bg) !important;
 }
+
+/* ========== 权限树组件 ========== */
+.perm-tree-container {
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  max-height: 400px;
+  overflow-y: auto;
+  background: var(--gray-50);
+}
+.perm-tree-group {
+  border-bottom: 1px solid var(--gray-100);
+}
+.perm-tree-group:last-child {
+  border-bottom: none;
+}
+.perm-tree-group-header {
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  background: white;
+  transition: var(--transition);
+}
+.perm-tree-group-header:hover {
+  background: var(--gray-50);
+}
+.perm-tree-arrow {
+  font-size: 10px;
+  color: var(--gray-400);
+  width: 14px;
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+.perm-tree-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--gray-800);
+}
+.perm-tree-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.perm-group-icon {
+  font-size: 16px;
+}
+.perm-group-count {
+  font-size: 11px;
+  color: var(--gray-400);
+  background: var(--gray-100);
+  padding: 1px 8px;
+  border-radius: 10px;
+  margin-left: auto;
+}
+.perm-tree-children {
+  padding: 4px 14px 8px 36px;
+  background: var(--gray-50);
+}
+.perm-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--gray-700);
+  transition: var(--transition);
+}
+.perm-tree-item:hover {
+  background: white;
+}
+.perm-tree-item input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--primary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.perm-tree-item.perm-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.perm-tree-item.perm-disabled input[type="checkbox"] {
+  cursor: not-allowed;
+}
+.perm-item-label {
+  flex: 1;
+}
+.perm-item-type {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.perm-item-type.type-menu {
+  background: #dbeafe;
+  color: #1e40af;
+}
+.perm-item-type.type-button {
+  background: var(--gray-100);
+  color: var(--gray-500);
+}

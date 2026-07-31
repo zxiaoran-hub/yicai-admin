@@ -69,6 +69,26 @@ function navigateTo(page) {
       subtitle.textContent = '查看和管理所有订单';
       renderOrders();
       break;
+    case 'roles':
+      title.textContent = '角色管理';
+      subtitle.textContent = '管理系统角色与权限配置';
+      renderRoles();
+      break;
+    case 'users-perm':
+      title.textContent = '用户权限';
+      subtitle.textContent = '管理用户角色分配与权限';
+      renderUsersPerm();
+      break;
+    case 'companies':
+      title.textContent = '公司管理';
+      subtitle.textContent = '管理公司与团队信息';
+      renderCompanies();
+      break;
+    case 'audit':
+      title.textContent = '审计日志';
+      subtitle.textContent = '查看权限操作审计记录';
+      renderAudit();
+      break;
     case 'settings':
       title.textContent = '平台设置';
       subtitle.textContent = '平台基础配置';
@@ -182,6 +202,23 @@ function showApp() {
           <div class="nav-item" data-page="orders" onclick="navigateTo('orders')">
             <span class="nav-icon">📦</span>
             <span>订单管理</span>
+          </div>
+          <div class="nav-section-title">权限管理</div>
+          <div class="nav-item" data-page="roles" onclick="navigateTo('roles')">
+            <span class="nav-icon">🔑</span>
+            <span>角色管理</span>
+          </div>
+          <div class="nav-item" data-page="users-perm" onclick="navigateTo('users-perm')">
+            <span class="nav-icon">👤</span>
+            <span>用户权限</span>
+          </div>
+          <div class="nav-item" data-page="companies" onclick="navigateTo('companies')">
+            <span class="nav-icon">🏢</span>
+            <span>公司管理</span>
+          </div>
+          <div class="nav-item" data-page="audit" onclick="navigateTo('audit')">
+            <span class="nav-icon">📜</span>
+            <span>审计日志</span>
           </div>
           <div class="nav-section-title">系统</div>
           <div class="nav-item" data-page="settings" onclick="navigateTo('settings')">
