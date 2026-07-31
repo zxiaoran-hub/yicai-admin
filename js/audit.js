@@ -42,6 +42,18 @@ function getOpTypeBadge(type) {
   return `<span class="badge badge-gray">${getOpTypeLabel(type)}</span>`;
 }
 
+// 从 details JSONB 中提取操作人邮箱
+function getAuditOperator(log) {
+  if (log.details?.operator_email) return log.details.operator_email;
+  if (log.actor_id) return log.actor_id.slice(0, 8) + '...';
+  return '-';
+}
+
+// 从 details JSONB 中提取操作详情文本
+function getAuditDetail(log) {
+  return log.details?.detail || '';
+}
+
 async function renderAudit() {
   const body = document.getElementById('page-body');
   body.innerHTML = '<div class="loading-spinner"><div class="spinner"></div>加载中...</div>';
@@ -53,7 +65,12 @@ async function renderAudit() {
       limit: 500
     });
 
-    auditData = logs || [];
+    auditData = (logs || []).map(log => ({
+      ...log,
+      // 兼容处理：将 details JSONB 中的字段映射到顶层
+      _operator: getAuditOperator(log),
+      _detail: getAuditDetail(log)
+    }));
     auditPage = 1;
     renderAuditPage();
   } catch (err) {
@@ -70,8 +87,8 @@ function renderAuditPage() {
   const start = (auditPage - 1) * auditPageSize;
   const pageData = filtered.slice(start, start + auditPageSize);
 
-  // 统计操作类型
-  const opTypes = [...new Set(auditData.map(l => l.operation_type).filter(Boolean))];
+  // 统计操作类型（使用 action 字段）
+  const opTypes = [...new Set(auditData.map(l => l.action).filter(Boolean))];
 
   body.innerHTML = `
     <div class="table-container">
@@ -104,10 +121,10 @@ function renderAuditPage() {
           ${pageData.length === 0 ? '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--gray-400)">暂无审计记录</td></tr>' : ''}
           ${pageData.map(log => `
             <tr>
-              <td style="font-weight:500;color:var(--gray-900)">${log.operator || log.operator_email || '-'}</td>
-              <td>${getOpTypeBadge(log.operation_type)}</td>
-              <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${log.target || ''}">${log.target || '-'}</td>
-              <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--gray-500);font-size:13px;" title="${log.detail || ''}">${log.detail || '-'}</td>
+              <td style="font-weight:500;color:var(--gray-900)">${log._operator}</td>
+              <td>${getOpTypeBadge(log.action)}</td>
+              <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${log.target_type || ''}">${log.target_type || '-'}</td>
+              <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--gray-500);font-size:13px;" title="${log._detail}">${log._detail || '-'}</td>
               <td style="white-space:nowrap;">${formatDateTime(log.created_at)}</td>
               <td>
                 <button class="btn btn-sm btn-outline" onclick="viewAuditDetail('${log.id}')">详情</button>
@@ -132,7 +149,7 @@ function applyAuditFilters(data) {
   let filtered = data;
 
   if (auditFilters.operationType) {
-    filtered = filtered.filter(l => l.operation_type === auditFilters.operationType);
+    filtered = filtered.filter(l => l.action === auditFilters.operationType);
   }
 
   if (auditFilters.timeRange) {
@@ -153,9 +170,9 @@ function applyAuditFilters(data) {
   if (auditFilters.search) {
     const q = auditFilters.search.toLowerCase();
     filtered = filtered.filter(l =>
-      (l.operator || '').toLowerCase().includes(q) ||
-      (l.operator_email || '').toLowerCase().includes(q) ||
-      (l.target || '').toLowerCase().includes(q)
+      (l._operator || '').toLowerCase().includes(q) ||
+      (l.target_type || '').toLowerCase().includes(q) ||
+      (l._detail || '').toLowerCase().includes(q)
     );
   }
 
@@ -191,41 +208,41 @@ function auditFilterTime(val) {
 
 // ========== 查看详情 ==========
 function viewAuditDetail(logId) {
-  const log = auditData.find(l => l.id === logId);
+  const log = auditData.find(l => String(l.id) === String(logId));
   if (!log) return showToast('记录不存在', true);
 
+  // 从 details JSONB 提取前后数据
   let beforeDataStr = '无';
   let afterDataStr = '无';
+  const details = log.details || {};
   try {
-    if (log.before_data) {
-      const parsed = typeof log.before_data === 'string' ? JSON.parse(log.before_data) : log.before_data;
-      beforeDataStr = JSON.stringify(parsed, null, 2);
+    if (details.before) {
+      beforeDataStr = JSON.stringify(details.before, null, 2);
     }
-  } catch(e) { beforeDataStr = String(log.before_data || '无'); }
+  } catch(e) { beforeDataStr = String(details.before || '无'); }
   try {
-    if (log.after_data) {
-      const parsed = typeof log.after_data === 'string' ? JSON.parse(log.after_data) : log.after_data;
-      afterDataStr = JSON.stringify(parsed, null, 2);
+    if (details.after) {
+      afterDataStr = JSON.stringify(details.after, null, 2);
     }
-  } catch(e) { afterDataStr = String(log.after_data || '无'); }
+  } catch(e) { afterDataStr = String(details.after || '无'); }
 
   const content = `
     <div class="detail-grid">
       <div class="detail-item">
         <span class="detail-label">操作人</span>
-        <span class="detail-value">${log.operator || log.operator_email || '-'}</span>
+        <span class="detail-value">${log._operator}</span>
       </div>
       <div class="detail-item">
         <span class="detail-label">操作人ID</span>
-        <span class="detail-value" style="font-family:monospace;font-size:12px;">${log.operator_id || '-'}</span>
+        <span class="detail-value" style="font-family:monospace;font-size:12px;">${log.actor_id || '-'}</span>
       </div>
       <div class="detail-item">
         <span class="detail-label">操作类型</span>
-        <span class="detail-value">${getOpTypeBadge(log.operation_type)}</span>
+        <span class="detail-value">${getOpTypeBadge(log.action)}</span>
       </div>
       <div class="detail-item">
         <span class="detail-label">操作目标</span>
-        <span class="detail-value">${log.target || '-'}</span>
+        <span class="detail-value">${log.target_type || '-'}</span>
       </div>
       <div class="detail-item">
         <span class="detail-label">目标ID</span>
@@ -235,15 +252,11 @@ function viewAuditDetail(logId) {
         <span class="detail-label">操作时间</span>
         <span class="detail-value">${formatDateTime(log.created_at)}</span>
       </div>
-      <div class="detail-item">
-        <span class="detail-label">IP地址</span>
-        <span class="detail-value">${log.ip_address || '-'}</span>
-      </div>
       <div class="detail-item full">
         <span class="detail-label">操作详情</span>
-        <span class="detail-value" style="font-size:13px;line-height:1.6;">${log.detail || '无详细信息'}</span>
+        <span class="detail-value" style="font-size:13px;line-height:1.6;">${log._detail || '无详细信息'}</span>
       </div>
-      ${log.before_data || log.after_data ? `
+      ${details.before || details.after ? `
         <div class="detail-item full">
           <span class="detail-label">变更前</span>
           <pre style="background:var(--gray-50);padding:12px;border-radius:var(--radius);font-size:12px;overflow-x:auto;max-height:200px;border:1px solid var(--gray-200);">${beforeDataStr}</pre>

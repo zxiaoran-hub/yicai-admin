@@ -11,14 +11,14 @@ async function renderUsersPerm() {
     // 尝试带 join 的查询，获取角色名和公司信息
     let userRoles = await supabase.query('user_roles', {
       select: '*,roles(name,data_scope),companies(name)',
-      order: 'created_at.desc'
+      order: 'granted_at.desc'
     });
 
-    // 如果 join 查询失败或返回空，回退到简单查询
+    // 如果 join 查询失败，回退到简单查询
     if (!userRoles || userRoles.length === 0) {
       const simpleRoles = await supabase.query('user_roles', {
         select: '*',
-        order: 'created_at.desc'
+        order: 'granted_at.desc'
       });
       userRoles = simpleRoles || [];
     }
@@ -331,9 +331,20 @@ async function saveAssignRole() {
   if (!roleId) return showToast('请选择角色', true);
 
   try {
+    // 先通过 RPC 函数查找用户 UUID
+    let userId = null;
+    try {
+      userId = await supabase.rpc('get_user_id_by_email', { p_email: email });
+    } catch (e) {
+      console.warn('RPC lookup failed:', e.message);
+    }
+    if (!userId) {
+      return showToast('未找到该邮箱对应的用户账号，请确认用户已注册', true);
+    }
+
     // 真实写入 user_roles 表
     const userRoleData = {
-      user_id: email,
+      user_id: userId,
       user_email: email,
       role_id: roleId,
       company_id: companyId || null,
@@ -343,7 +354,7 @@ async function saveAssignRole() {
 
     // 记录审计日志
     const role = rolesData.find(r => r.id === roleId);
-    await writeAuditLog('user:assign_role', `用户：${email}`, `为用户「${email}」分配角色「${role ? role.name : roleId}」`, email);
+    await writeAuditLog('user:assign_role', `用户：${email}`, `为用户「${email}」分配角色「${role ? role.name : roleId}」`, userId);
 
     closeModal();
     showToast('角色分配成功');
@@ -453,15 +464,22 @@ function removeUserRole(recordId, userEmail) {
 
 // ========== 查看用户有效权限汇总 ==========
 async function viewUserPerms(userId) {
-  // 从数据库查询该用户的所有角色关联
-  const userRoles = await supabase.query('user_roles', {
+  // 先尝试用 user_email 查询，再尝试 user_id
+  let records = await supabase.query('user_roles', {
     select: '*,roles(name,data_scope)',
     filter: { user_email: userId }
   });
 
-  const records = userRoles || [];
+  if (!records || records.length === 0) {
+    // 回退：用 user_id 查询
+    records = await supabase.query('user_roles', {
+      select: '*,roles(name,data_scope)',
+      filter: { user_id: userId }
+    });
+  }
+
+  records = records || [];
   if (records.length === 0) {
-    // 回退：从本地数据查找
     const localRecords = usersPermData.filter(u => (u._user_email || u.user_id) === userId);
     if (localRecords.length === 0) return showToast('未找到该用户的权限记录', true);
   }

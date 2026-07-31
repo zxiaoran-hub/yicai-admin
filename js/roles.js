@@ -129,19 +129,21 @@ async function dbDelete(table, match) {
   return true;
 }
 
-// 写入审计日志
-async function writeAuditLog(operationType, target, detail, targetId, beforeData, afterData) {
+// 写入审计日志（匹配 permission_audit_log 实际表结构）
+async function writeAuditLog(action, targetType, detail, targetId, beforeData, afterData) {
   try {
+    const details = {};
+    if (detail) details.detail = detail;
+    if (beforeData) details.before = beforeData;
+    if (afterData) details.after = afterData;
+    if (currentUser?.email) details.operator_email = currentUser.email;
+
     await dbInsert('permission_audit_log', {
-      operator_id: currentUser?.id || '',
-      operator_email: currentUser?.email || '',
-      operator: currentUser?.email || 'system',
-      operation_type: operationType,
-      target: target,
+      actor_id: currentUser?.id || null,
+      action: action,
+      target_type: targetType,
       target_id: targetId ? String(targetId) : '',
-      detail: detail || '',
-      before_data: beforeData ? JSON.stringify(beforeData) : null,
-      after_data: afterData ? JSON.stringify(afterData) : null
+      details: Object.keys(details).length > 0 ? details : null
     });
   } catch (e) {
     console.warn('审计日志写入失败:', e.message);
@@ -156,7 +158,7 @@ async function renderRoles() {
   try {
     const [roles, perms] = await Promise.all([
       supabase.query('roles', { select: '*', order: 'created_at.desc' }),
-      supabase.query('permissions', { select: '*', order: 'group_name.asc,sort_order.asc' })
+      supabase.query('permissions', { select: '*', order: 'menu_path.asc,sort_order.asc' })
     ]);
 
     rolesData = roles || [];
@@ -201,11 +203,11 @@ async function renderRoles() {
                 <td style="font-weight:500;color:var(--gray-900)">${r.name || '-'}</td>
                 <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.description || ''}">${r.description || '-'}</td>
                 <td><span class="badge badge-info">${SCOPE_MAP[r.data_scope] || r.data_scope || '-'}</span></td>
-                <td>${typeBadge(r.role_type)}</td>
+                <td>${typeBadge(r.is_system ? 'builtin' : 'custom')}</td>
                 <td>
                   <button class="btn btn-sm btn-outline" onclick="openEditRole('${r.id}')">编辑</button>
                   <button class="btn btn-sm btn-outline" onclick="openPermConfig('${r.id}')">权限</button>
-                  ${r.role_type !== 'builtin' ? `<button class="btn btn-sm btn-danger" onclick="deleteRole('${r.id}','${(r.name || '').replace(/'/g, "\\'")}')">删除</button>` : ''}
+                  ${!r.is_system ? `<button class="btn btn-sm btn-danger" onclick="deleteRole('${r.id}','${(r.name || '').replace(/'/g, "\\'")}')">删除</button>` : ''}
                 </td>
               </tr>
             `).join('')}
@@ -256,11 +258,11 @@ function filterRoles(val) {
         <td style="font-weight:500;color:var(--gray-900)">${r.name || '-'}</td>
         <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.description || ''}">${r.description || '-'}</td>
         <td><span class="badge badge-info">${SCOPE_MAP[r.data_scope] || r.data_scope || '-'}</span></td>
-        <td>${typeBadge(r.role_type)}</td>
+        <td>${typeBadge(r.is_system ? 'builtin' : 'custom')}</td>
         <td>
           <button class="btn btn-sm btn-outline" onclick="openEditRole('${r.id}')">编辑</button>
           <button class="btn btn-sm btn-outline" onclick="openPermConfig('${r.id}')">权限</button>
-          ${r.role_type !== 'builtin' ? `<button class="btn btn-sm btn-danger" onclick="deleteRole('${r.id}','${(r.name || '').replace(/'/g, "\\'")}')">删除</button>` : ''}
+          ${!r.is_system ? `<button class="btn btn-sm btn-danger" onclick="deleteRole('${r.id}','${(r.name || '').replace(/'/g, "\\'")}')">删除</button>` : ''}
         </td>
       </tr>
     `).join('');
@@ -515,7 +517,7 @@ async function saveRole() {
       name,
       description: desc,
       data_scope: scope,
-      role_type: 'custom'
+      is_system: false
     };
     const result = await dbInsert('roles', roleData);
     const newRole = result[0] || result;
@@ -638,7 +640,7 @@ async function openPermConfig(roleId) {
   });
   const checkedPerms = (rolePerms || []).map(rp => rp.permission_id);
 
-  const disabledPerms = role.role_type === 'custom' ? ['rbac:role_delete', 'system:settings'] : [];
+  const disabledPerms = !role.is_system ? ['rbac:role_delete', 'system:settings'] : [];
 
   const content = `
     <div style="margin-bottom:16px;">
@@ -732,18 +734,27 @@ async function savePermConfig(roleId) {
   }
 }
 
-// 工具：从数据库权限记录构建树
+// 工具：从数据库权限记录构建树（使用实际数据库字段）
 function buildPermTree(permRecords) {
+  const groupIcons = {
+    '数据看板': '📊', '询价管理': '📋', '报价管理': '💰',
+    '订单管理': '📦', '供应商管理': '🏭', '采购方管理': '🛒',
+    '角色管理': '🔑', '用户管理': '👤', '公司管理': '🏢',
+    '团队管理': '👥', '审计日志': '📜', '系统设置': '⚙️',
+    '通知管理': '🔔'
+  };
   const groups = {};
   permRecords.forEach(p => {
-    const gn = p.group_name || '其他';
+    const gn = p.menu_path || '其他';
     if (!groups[gn]) {
-      groups[gn] = { group: gn, icon: p.group_icon || '📁', permissions: [] };
+      groups[gn] = { group: gn, icon: groupIcons[gn] || '📁', permissions: [] };
     }
+    // 判断权限类型：button_key 以 'btn:' 开头为按钮权限，否则为菜单权限
+    const permType = (p.button_key && p.button_key.startsWith('btn:')) ? 'button' : 'menu';
     groups[gn].permissions.push({
-      id: p.permission_key || p.id,
-      label: p.label || p.permission_key,
-      type: p.perm_type || 'button'
+      id: p.id,
+      label: p.display_name || p.resource + ':' + p.action,
+      type: permType
     });
   });
   return Object.values(groups);

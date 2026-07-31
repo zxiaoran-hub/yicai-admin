@@ -219,8 +219,7 @@ async function saveCompany() {
     const companyData = {
       name,
       type,
-      status,
-      remark: remark || null
+      status
     };
 
     // 真实写入数据库
@@ -299,8 +298,7 @@ async function updateCompany(companyId) {
     await supabase.update('companies', {
       name,
       type,
-      status,
-      remark: remark || null
+      status
     }, { id: companyId });
 
     // 审计日志
