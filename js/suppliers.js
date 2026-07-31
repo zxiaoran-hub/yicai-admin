@@ -452,9 +452,28 @@ async function handleAddSupplier(event) {
       }
     }
 
-    // 第二步：插入 suppliers 表
+    // 第二步：在 companies 表创建公司记录（type='supplier'）
+    const companyData = {
+      name: companyName,
+      type: 'supplier',
+      status: 'active',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    console.log('[AddSupplier] Creating company record:', companyData);
+    const companyResult = await supabase.insert('companies', companyData);
+    const companyId = companyResult[0]?.id;
+
+    if (!companyId) {
+      showToast('创建公司记录失败');
+      return;
+    }
+
+    // 第三步：插入 suppliers 表，关联 company_id
     const supplierData = {
       user_id: authUserId,
+      company_id: companyId,
       company_name: companyName,
       short_name: shortName || null,
       category: [industry],
