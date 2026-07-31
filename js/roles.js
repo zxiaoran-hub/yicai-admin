@@ -430,8 +430,31 @@ function getSelectedDesignatedCompanies() {
 
 // ========== 权限树渲染 ==========
 function renderPermTreeForForm(treeData, checkedPerms) {
+  return `
+    <div style="margin-bottom:12px;padding:10px;background:#f5f7fa;border-radius:6px;">
+      <label style="font-size:13px;color:#666;margin-right:8px;">平台筛选：</label>
+      <select id="perm-platform-filter" onchange="filterPermTreeByPlatform(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:13px;">
+        <option value="all">全部平台</option>
+        <option value="pc">仅 PC 端</option>
+        <option value="h5">仅 H5 端</option>
+      </select>
+      <span style="font-size:12px;color:#999;margin-left:8px;">提示：权限可按平台分别配置</span>
+    </div>
+    <div id="perm-tree-content">
+      ${renderPermTreeGroups(treeData, checkedPerms, 'all')}
+    </div>
+  `;
+}
+
+function renderPermTreeGroups(treeData, checkedPerms, platformFilter) {
   return treeData.map(group => {
-    const groupPerms = group.permissions || [];
+    let groupPerms = group.permissions || [];
+    // 平台过滤
+    if (platformFilter && platformFilter !== 'all') {
+      groupPerms = groupPerms.filter(p => p.platform === 'all' || p.platform === platformFilter);
+    }
+    if (groupPerms.length === 0) return '';
+    
     const allChecked = groupPerms.length > 0 && groupPerms.every(p => checkedPerms.includes(p.id));
     const someChecked = groupPerms.some(p => checkedPerms.includes(p.id));
 
@@ -452,12 +475,28 @@ function renderPermTreeForForm(treeData, checkedPerms) {
               <input type="checkbox" value="${p.id}" ${checkedPerms.includes(p.id) ? 'checked' : ''} onchange="updateGroupCheckbox(this)">
               <span class="perm-item-label">${p.label}</span>
               <span class="perm-item-type ${p.type === 'menu' ? 'type-menu' : 'type-button'}">${p.type === 'menu' ? '菜单' : '按钮'}</span>
+              <span class="perm-item-platform platform-${p.platform || 'all'}">${getPlatformLabel(p.platform)}</span>
             </label>
           `).join('')}
         </div>
       </div>
     `;
   }).join('');
+}
+
+function getPlatformLabel(platform) {
+  const labels = { all: '全平台', pc: 'PC', h5: 'H5' };
+  return labels[platform] || '全平台';
+}
+
+function filterPermTreeByPlatform(platform) {
+  const contentEl = document.getElementById('perm-tree-content');
+  if (contentEl && permissionsData) {
+    // 保留当前选中状态
+    const currentChecked = Array.from(contentEl.querySelectorAll('.perm-tree-children input[type="checkbox"]:checked'))
+      .map(cb => cb.value);
+    contentEl.innerHTML = renderPermTreeGroups(permissionsData, currentChecked, platform);
+  }
 }
 
 function togglePermGroup(header) {
@@ -660,8 +699,30 @@ async function openPermConfig(roleId) {
 }
 
 function renderPermTreeConfig(treeData, checkedPerms, disabledPerms) {
+  return `
+    <div style="margin-bottom:12px;padding:10px;background:#f5f7fa;border-radius:6px;">
+      <label style="font-size:13px;color:#666;margin-right:8px;">平台筛选：</label>
+      <select id="config-platform-filter" onchange="filterConfigPermTreeByPlatform(this.value)" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:13px;">
+        <option value="all">全部平台</option>
+        <option value="pc">仅 PC 端</option>
+        <option value="h5">仅 H5 端</option>
+      </select>
+    </div>
+    <div id="config-perm-tree-content">
+      ${renderPermTreeConfigGroups(treeData, checkedPerms, disabledPerms, 'all')}
+    </div>
+  `;
+}
+
+function renderPermTreeConfigGroups(treeData, checkedPerms, disabledPerms, platformFilter) {
   return treeData.map(group => {
-    const groupPerms = group.permissions || [];
+    let groupPerms = group.permissions || [];
+    // 平台过滤
+    if (platformFilter && platformFilter !== 'all') {
+      groupPerms = groupPerms.filter(p => p.platform === 'all' || p.platform === platformFilter);
+    }
+    if (groupPerms.length === 0) return '';
+    
     const enabledPerms = groupPerms.filter(p => !disabledPerms.includes(p.id));
     const allChecked = enabledPerms.length > 0 && enabledPerms.every(p => checkedPerms.includes(p.id));
 
@@ -684,6 +745,7 @@ function renderPermTreeConfig(treeData, checkedPerms, disabledPerms) {
                 <input type="checkbox" value="${p.id}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''} onchange="updateGroupCheckbox(this)">
                 <span class="perm-item-label">${p.label}</span>
                 <span class="perm-item-type ${p.type === 'menu' ? 'type-menu' : 'type-button'}">${p.type === 'menu' ? '菜单' : '按钮'}</span>
+                <span class="perm-item-platform platform-${p.platform || 'all'}">${getPlatformLabel(p.platform)}</span>
               </label>
             `;
           }).join('')}
@@ -691,6 +753,21 @@ function renderPermTreeConfig(treeData, checkedPerms, disabledPerms) {
       </div>
     `;
   }).join('');
+}
+
+function filterConfigPermTreeByPlatform(platform) {
+  const contentEl = document.getElementById('config-perm-tree-content');
+  if (contentEl && permissionsData) {
+    // 获取当前roleId
+    const saveBtn = document.querySelector('.modal-footer .btn-primary');
+    const roleId = saveBtn ? saveBtn.getAttribute('onclick').match(/'([^']+)'/)[1] : null;
+    // 保留当前选中状态和禁用状态
+    const currentChecked = Array.from(contentEl.querySelectorAll('.perm-tree-children input[type="checkbox"]:checked'))
+      .map(cb => cb.value);
+    const currentDisabled = Array.from(contentEl.querySelectorAll('.perm-tree-children input[type="checkbox"]:disabled'))
+      .map(cb => cb.value);
+    contentEl.innerHTML = renderPermTreeConfigGroups(permissionsData, currentChecked, currentDisabled, platform);
+  }
 }
 
 function expandAllPermGroups() {
@@ -752,7 +829,8 @@ function buildPermTree(permRecords) {
     groups[gn].permissions.push({
       id: p.id,
       label: p.display_name || p.resource + ':' + p.action,
-      type: permType
+      type: permType,
+      platform: p.platform || 'all'  // 添加平台字段
     });
   });
   // 按菜单顺序排序
