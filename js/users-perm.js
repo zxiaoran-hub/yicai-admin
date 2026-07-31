@@ -366,9 +366,25 @@ async function saveAssignRole() {
 
 // ========== 编辑用户角色 ==========
 async function editUserRole(recordId) {
-  const rid = Number(recordId);
-  const record = usersPermData.find(u => u.id === rid || String(u.id) === String(recordId));
-  if (!record) return showToast('记录不存在', true);
+  console.log('[editUserRole] called with:', recordId, typeof recordId);
+  console.log('[editUserRole] usersPermData ids:', usersPermData.map(u => ({ id: u.id, type: typeof u.id })));
+  // 先从内存查找，找不到则从数据库查询
+  let record = usersPermData.find(u => String(u.id) === String(recordId));
+  console.log('[editUserRole] found in memory:', !!record);
+  if (!record) {
+    const rows = await supabase.query('user_roles', {
+      select: '*,roles(name,data_scope),companies(name)',
+      filter: { id: recordId }
+    });
+    if (!rows || rows.length === 0) return showToast('记录不存在', true);
+    record = {
+      ...rows[0],
+      _role_name: rows[0].roles?.name || rows[0].role_name || rows[0].role_id || '',
+      _data_scope: rows[0].roles?.data_scope || rows[0].data_scope || '',
+      _company_name: rows[0].companies?.name || rows[0].company_name || rows[0].company_id || '',
+      _user_email: rows[0].user_email || rows[0].user_id || ''
+    };
+  }
 
   // 加载公司和角色选项
   const [companies, roles] = await Promise.all([
