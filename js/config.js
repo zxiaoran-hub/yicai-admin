@@ -144,6 +144,23 @@ const supabase = {
     return response.json();
   },
 
+  async insert(table, data) {
+    const url = `${this.url}/rest/v1/${table}`;
+    const headers = await getAuthHeaders();
+    headers['Prefer'] = 'return=representation';
+    headers['Content-Type'] = 'application/json';
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(data)
+    });
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.message || err.error_description || `Insert failed: ${response.status}`);
+    }
+    return response.json();
+  },
+
   async signIn(email, password) {
     const url = `${this.url}/auth/v1/token?grant_type=password`;
     const response = await fetch(url, {

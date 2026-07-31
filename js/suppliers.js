@@ -400,17 +400,57 @@ async function handleAddSupplier(event) {
   }
 
   try {
-    // 第一步：创建 Supabase Auth 账号
-    console.log('[AddSupplier] Creating auth user for:', contactEmail);
-    const signUpResult = await supabase.authSignUp(contactEmail, initialPassword);
-    console.log('[AddSupplier] signUp result:', signUpResult);
+    // 第一步：创建或查找 Supabase Auth 账号
+    let authUserId = null;
+    let isNewAccount = true;
 
-    if (!signUpResult.user) {
-      showToast('创建账号失败');
-      return;
+    try {
+      console.log('[AddSupplier] Creating auth user for:', contactEmail);
+      const signUpResult = await supabase.authSignUp(contactEmail, initialPassword);
+      console.log('[AddSupplier] signUp result:', signUpResult);
+
+      if (!signUpResult.user) {
+        showToast('创建账号失败');
+        return;
+      }
+      authUserId = signUpResult.user.id;
+    } catch (signUpErr) {
+      // 用户已存在，尝试查找现有账号
+      if (signUpErr.message && signUpErr.message.includes('already registered')) {
+        console.log('[AddSupplier] User already exists, looking up by email...');
+        isNewAccount = false;
+
+        // 通过 admin API 查找用户
+        const headers = await getAuthHeaders();
+        const listUrl = `${supabase.url}/admin/users?filter=${encodeURIComponent(contactEmail)}`;
+        const listResp = await fetch(listUrl, { method: 'GET', headers });
+
+        if (!listResp.ok) {
+          showToast('该邮箱已注册，但无法查询现有账号，请换用其他邮箱');
+          return;
+        }
+
+        const listData = await listResp.json();
+        const existingUser = listData.users?.find(u => u.email.toLowerCase() === contactEmail.toLowerCase());
+
+        if (!existingUser) {
+          showToast('该邮箱已注册，但无法找到对应账号');
+          return;
+        }
+
+        // 检查是否已是供应商
+        const existingSupplier = await supabase.query('suppliers', { user_id: `eq.${existingUser.id}` });
+        if (existingSupplier && existingSupplier.length > 0) {
+          showToast('该邮箱已是供应商');
+          return;
+        }
+
+        authUserId = existingUser.id;
+        console.log('[AddSupplier] Using existing auth user:', authUserId);
+      } else {
+        throw signUpErr;
+      }
     }
-
-    const authUserId = signUpResult.user.id;
 
     // 第二步：插入 suppliers 表
     const supplierData = {
@@ -432,7 +472,10 @@ async function handleAddSupplier(event) {
     const insertResult = await supabase.insert('suppliers', supplierData);
     console.log('[AddSupplier] Insert result:', insertResult);
 
-    showToast('供应商创建成功！账号：' + contactEmail + '，密码：' + initialPassword);
+    const msg = isNewAccount
+      ? `供应商创建成功！账号：${contactEmail}，密码：${initialPassword}`
+      : `供应商创建成功！已关联现有账号：${contactEmail}`;
+    showToast(msg);
     closeModal();
     renderSuppliers();
   } catch (err) {
