@@ -2,6 +2,17 @@
 const SUPABASE_URL = 'https://spb-m06skr4cysol4lwz.supabase.opentrust.net';
 const SUPABASE_ANON_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiIsInJlZiI6InNwYi1tMDZza3I0Y3lzb2w0bHd6IiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE3ODUzNzcwNjIsImV4cCI6MjEwMDk1MzA2Mn0.2OO2jmTetq6vOE4xTRruNMXVUI89ATMIStpIl4ul3kI';
 
+// 获取当前认证 token（登录后用用户token，否则用anon key）
+function getAuthHeaders() {
+  const userToken = localStorage.getItem('yicai_admin_token');
+  const authToken = userToken || SUPABASE_ANON_KEY;
+  return {
+    'apikey': SUPABASE_ANON_KEY,
+    'Authorization': `Bearer ${authToken}`,
+    'Content-Type': 'application/json'
+  };
+}
+
 // Supabase REST API 辅助函数
 const supabase = {
   url: SUPABASE_URL,
@@ -50,11 +61,7 @@ const supabase = {
 
     try {
       const response = await fetch(url, {
-        headers: {
-          'apikey': this.key,
-          'Authorization': `Bearer ${this.key}`,
-          'Content-Type': 'application/json'
-        },
+        headers: getAuthHeaders(),
         signal: controller.signal
       });
       clearTimeout(timeoutId);
@@ -74,11 +81,7 @@ const supabase = {
     const url = `${this.url}/rest/v1/rpc/${functionName}`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'apikey': this.key,
-        'Authorization': `Bearer ${this.key}`,
-        'Content-Type': 'application/json'
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify(params)
     });
     if (!response.ok) throw new Error(`RPC failed: ${response.status}`);
@@ -93,14 +96,11 @@ const supabase = {
     }
     url += queryParams.join('&');
 
+    const headers = getAuthHeaders();
+    headers['Prefer'] = 'return=representation';
     const response = await fetch(url, {
       method: 'PATCH',
-      headers: {
-        'apikey': this.key,
-        'Authorization': `Bearer ${this.key}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation'
-      },
+      headers,
       body: JSON.stringify(data)
     });
     if (!response.ok) throw new Error(`Update failed: ${response.status}`);
@@ -134,13 +134,10 @@ const supabase = {
     if (queryParams.length > 0) {
       url += '&' + queryParams.join('&');
     }
+    const headers = getAuthHeaders();
+    headers['Prefer'] = 'count=exact';
     const response = await fetch(url, {
-      headers: {
-        'apikey': this.key,
-        'Authorization': `Bearer ${this.key}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'count=exact'
-      }
+      headers
     });
     if (!response.ok) return 0;
     const cr = response.headers.get('content-range');
@@ -161,11 +158,7 @@ const supabase = {
       url += '&' + queryParams.join('&');
     }
     const response = await fetch(url, {
-      headers: {
-        'apikey': this.key,
-        'Authorization': `Bearer ${this.key}`,
-        'Content-Type': 'application/json'
-      }
+      headers: getAuthHeaders()
     });
     if (!response.ok) return [];
     return response.json();

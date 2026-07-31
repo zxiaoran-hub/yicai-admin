@@ -91,14 +91,11 @@ const DEFAULT_PERMISSION_TREE = [
 
 // ========== 通用数据库操作辅助 ==========
 async function dbInsert(table, data) {
+  const headers = getAuthHeaders();
+  headers['Prefer'] = 'return=representation';
   const response = await fetch(`${supabase.url}/rest/v1/${table}`, {
     method: 'POST',
-    headers: {
-      'apikey': supabase.key,
-      'Authorization': `Bearer ${supabase.key}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'return=representation'
-    },
+    headers,
     body: JSON.stringify(data)
   });
   if (!response.ok) {
@@ -117,10 +114,7 @@ async function dbDelete(table, match) {
   url += queryParams.join('&');
   const response = await fetch(url, {
     method: 'DELETE',
-    headers: {
-      'apikey': supabase.key,
-      'Authorization': `Bearer ${supabase.key}`
-    }
+    headers: getAuthHeaders()
   });
   if (!response.ok) {
     const errText = await response.text();
