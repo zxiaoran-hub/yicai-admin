@@ -731,12 +731,16 @@ async function savePermConfig(roleId) {
 // 工具：从数据库权限记录构建树（使用实际数据库字段）
 function buildPermTree(permRecords) {
   const groupIcons = {
-    '数据看板': '📊', '询价管理': '📋', '报价管理': '💰',
-    '订单管理': '📦', '供应商管理': '🏭', '采购方管理': '🛒',
-    '角色管理': '🔑', '用户管理': '👤', '公司管理': '🏢',
-    '团队管理': '👥', '审计日志': '📜', '系统设置': '⚙️',
-    '通知管理': '🔔'
+    '数据看板': '📊', '供应商管理': '🏭', '采购方管理': '🛒',
+    '询价管理': '📋', '订单管理': '📦', '角色管理': '🔑',
+    '用户权限管理': '👤', '权限管理': '🔑', '公司管理': '🏢',
+    '审计日志': '📜', '系统设置': '⚙️'
   };
+  // 按左侧菜单栏顺序排序
+  const menuOrder = [
+    '数据看板', '供应商管理', '采购方管理', '询价管理', '订单管理',
+    '角色管理', '用户权限管理', '权限管理', '公司管理', '审计日志', '系统设置'
+  ];
   const groups = {};
   permRecords.forEach(p => {
     const gn = p.menu_path || '其他';
@@ -751,5 +755,15 @@ function buildPermTree(permRecords) {
       type: permType
     });
   });
-  return Object.values(groups);
+  // 按菜单顺序排序
+  const result = Object.values(groups);
+  result.sort((a, b) => {
+    const idxA = menuOrder.indexOf(a.group);
+    const idxB = menuOrder.indexOf(b.group);
+    // 未定义的排到最后
+    const orderA = idxA === -1 ? 999 : idxA;
+    const orderB = idxB === -1 ? 999 : idxB;
+    return orderA - orderB;
+  });
+  return result;
 }
