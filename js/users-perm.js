@@ -366,7 +366,8 @@ async function saveAssignRole() {
 
 // ========== 编辑用户角色 ==========
 async function editUserRole(recordId) {
-  const record = usersPermData.find(u => u.id === recordId);
+  const rid = Number(recordId);
+  const record = usersPermData.find(u => u.id === rid || String(u.id) === String(recordId));
   if (!record) return showToast('记录不存在', true);
 
   // 加载公司和角色选项
