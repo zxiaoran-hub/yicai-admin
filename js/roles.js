@@ -89,19 +89,77 @@ const DEFAULT_PERMISSION_TREE = [
   }
 ];
 
+// ========== 通用数据库操作辅助 ==========
+async function dbInsert(table, data) {
+  const response = await fetch(`${supabase.url}/rest/v1/${table}`, {
+    method: 'POST',
+    headers: {
+      'apikey': supabase.key,
+      'Authorization': `Bearer ${supabase.key}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    },
+    body: JSON.stringify(data)
+  });
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`插入失败(${response.status}): ${errText}`);
+  }
+  return response.json();
+}
+
+async function dbDelete(table, match) {
+  let url = `${supabase.url}/rest/v1/${table}?`;
+  const queryParams = [];
+  for (const [key, value] of Object.entries(match)) {
+    queryParams.push(`${key}=eq.${value}`);
+  }
+  url += queryParams.join('&');
+  const response = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      'apikey': supabase.key,
+      'Authorization': `Bearer ${supabase.key}`
+    }
+  });
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`删除失败(${response.status}): ${errText}`);
+  }
+  return true;
+}
+
+// 写入审计日志
+async function writeAuditLog(operationType, target, detail, targetId, beforeData, afterData) {
+  try {
+    await dbInsert('permission_audit_log', {
+      operator_id: currentUser?.id || '',
+      operator_email: currentUser?.email || '',
+      operator: currentUser?.email || 'system',
+      operation_type: operationType,
+      target: target,
+      target_id: targetId ? String(targetId) : '',
+      detail: detail || '',
+      before_data: beforeData ? JSON.stringify(beforeData) : null,
+      after_data: afterData ? JSON.stringify(afterData) : null
+    });
+  } catch (e) {
+    console.warn('审计日志写入失败:', e.message);
+  }
+}
+
+// ========== 角色列表渲染 ==========
 async function renderRoles() {
   const body = document.getElementById('page-body');
   body.innerHTML = '<div class="loading-spinner"><div class="spinner"></div>加载中...</div>';
 
   try {
-    // 并行加载角色和权限
     const [roles, perms] = await Promise.all([
       supabase.query('roles', { select: '*', order: 'created_at.desc' }),
       supabase.query('permissions', { select: '*', order: 'group_name.asc,sort_order.asc' })
     ]);
 
     rolesData = roles || [];
-    // 如果数据库有权限数据，则按组构建树
     if (perms && perms.length > 0) {
       permissionsData = buildPermTree(perms);
     } else {
@@ -133,25 +191,21 @@ async function renderRoles() {
               <th>描述</th>
               <th>数据权限范围</th>
               <th>角色类型</th>
-              <th>用户数</th>
-              <th>创建时间</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
-            ${pageData.length === 0 ? '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--gray-400)">暂无角色，点击「新建角色」创建</td></tr>' : ''}
+            ${pageData.length === 0 ? '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--gray-400)">暂无角色，点击「新建角色」创建</td></tr>' : ''}
             ${pageData.map(r => `
               <tr>
                 <td style="font-weight:500;color:var(--gray-900)">${r.name || '-'}</td>
                 <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.description || ''}">${r.description || '-'}</td>
                 <td><span class="badge badge-info">${SCOPE_MAP[r.data_scope] || r.data_scope || '-'}</span></td>
                 <td>${typeBadge(r.role_type)}</td>
-                <td><span style="color:var(--primary);font-weight:500;">${r.user_count || 0}</span></td>
-                <td>${formatDate(r.created_at)}</td>
                 <td>
                   <button class="btn btn-sm btn-outline" onclick="openEditRole('${r.id}')">编辑</button>
                   <button class="btn btn-sm btn-outline" onclick="openPermConfig('${r.id}')">权限</button>
-                  ${r.role_type !== 'builtin' ? `<button class="btn btn-sm btn-danger" onclick="deleteRole('${r.id}','${r.name}')">删除</button>` : ''}
+                  ${r.role_type !== 'builtin' ? `<button class="btn btn-sm btn-danger" onclick="deleteRole('${r.id}','${(r.name || '').replace(/'/g, "\\'")}')">删除</button>` : ''}
                 </td>
               </tr>
             `).join('')}
@@ -168,7 +222,7 @@ async function renderRoles() {
       'rolesGoToPage'
     );
   } catch (err) {
-    body.innerHTML = `<div class="empty-state"><div class="empty-icon">🔑</div><p>加载角色数据失败，请稍后重试</p></div>`;
+    body.innerHTML = `<div class="empty-state"><div class="empty-icon">🔑</div><p>加载角色数据失败：${err.message}</p></div>`;
   }
 }
 
@@ -186,11 +240,10 @@ function filterRoles(val) {
       (r.name || '').toLowerCase().includes(q) ||
       (r.description || '').toLowerCase().includes(q)
     );
-    // 重新渲染表格部分
     const tbody = document.querySelector('.table-container tbody');
     if (!tbody) return;
     if (filtered.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--gray-400)">未找到匹配的角色</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--gray-400)">未找到匹配的角色</td></tr>';
       return;
     }
     const typeBadge = (type) => {
@@ -204,28 +257,21 @@ function filterRoles(val) {
         <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.description || ''}">${r.description || '-'}</td>
         <td><span class="badge badge-info">${SCOPE_MAP[r.data_scope] || r.data_scope || '-'}</span></td>
         <td>${typeBadge(r.role_type)}</td>
-        <td><span style="color:var(--primary);font-weight:500;">${r.user_count || 0}</span></td>
-        <td>${formatDate(r.created_at)}</td>
         <td>
           <button class="btn btn-sm btn-outline" onclick="openEditRole('${r.id}')">编辑</button>
           <button class="btn btn-sm btn-outline" onclick="openPermConfig('${r.id}')">权限</button>
-          ${r.role_type !== 'builtin' ? `<button class="btn btn-sm btn-danger" onclick="deleteRole('${r.id}','${r.name}')">删除</button>` : ''}
+          ${r.role_type !== 'builtin' ? `<button class="btn btn-sm btn-danger" onclick="deleteRole('${r.id}','${(r.name || '').replace(/'/g, "\\'")}')">删除</button>` : ''}
         </td>
       </tr>
     `).join('');
   }, 300);
 }
 
-// ========== 创建/编辑角色弹窗 ==========
+// ========== 创建角色 ==========
 function openCreateRole() {
   const scopeOptions = Object.entries(SCOPE_MAP).map(([k, v]) =>
     `<option value="${k}">${v}</option>`
   ).join('');
-
-  const parentOptions = rolesData
-    .filter(r => r.role_type !== 'builtin' || true)
-    .map(r => `<option value="${r.id}">${r.name}</option>`)
-    .join('');
 
   const content = `
     <div class="form-group">
@@ -238,17 +284,17 @@ function openCreateRole() {
     </div>
     <div class="form-group">
       <label>数据权限范围</label>
-      <select id="role-scope">
+      <select id="role-scope" onchange="toggleDesignatedSelector()">
         ${scopeOptions}
       </select>
       <div style="font-size:12px;color:var(--gray-400);margin-top:4px;">控制该角色可查看的数据范围</div>
     </div>
-    <div class="form-group">
-      <label>父角色（可选，继承其权限）</label>
-      <select id="role-parent">
-        <option value="">无（不继承）</option>
-        ${parentOptions}
-      </select>
+    <div class="form-group" id="designated-companies-box" style="display:none;">
+      <label>指定公司 <span style="color:var(--danger)">*</span></label>
+      <div id="designated-companies-list" style="max-height:200px;overflow-y:auto;border:1px solid var(--gray-200);border-radius:var(--radius);padding:8px;">
+        <div style="color:var(--gray-400);font-size:13px;">加载中...</div>
+      </div>
+      <div style="font-size:12px;color:var(--gray-400);margin-top:4px;">勾选该角色可以访问的公司</div>
     </div>
     <div class="form-group">
       <label>权限配置</label>
@@ -266,21 +312,31 @@ function openCreateRole() {
   showModal('新建角色', content, footer);
 }
 
-function openEditRole(roleId) {
-  const role = rolesData.find(r => r.id === roleId);
+// ========== 编辑角色 ==========
+async function openEditRole(roleId) {
+  // 重新从数据库查询确保数据最新
+  const roles = await supabase.query('roles', { select: '*', filter: { id: roleId } });
+  const role = roles && roles.length > 0 ? roles[0] : null;
   if (!role) return showToast('角色不存在', true);
+
+  // 更新本地缓存
+  const localIdx = rolesData.findIndex(r => r.id === roleId);
+  if (localIdx >= 0) {
+    rolesData[localIdx] = role;
+  }
 
   const scopeOptions = Object.entries(SCOPE_MAP).map(([k, v]) =>
     `<option value="${k}" ${role.data_scope === k ? 'selected' : ''}>${v}</option>`
   ).join('');
 
-  const parentOptions = rolesData
-    .filter(r => r.id !== roleId)
-    .map(r => `<option value="${r.id}" ${role.parent_role_id === r.id ? 'selected' : ''}>${r.name}</option>`)
-    .join('');
+  // 查询角色已有的权限
+  const rolePerms = await supabase.query('role_permissions', {
+    select: 'permission_id',
+    filter: { role_id: roleId }
+  });
+  const checkedPerms = (rolePerms || []).map(rp => rp.permission_id);
 
-  // 获取角色已有的权限
-  const checkedPerms = role.permissions || [];
+  const designatedVisible = role.data_scope === 'designated' ? '' : 'none';
 
   const content = `
     <div class="form-group">
@@ -293,16 +349,16 @@ function openEditRole(roleId) {
     </div>
     <div class="form-group">
       <label>数据权限范围</label>
-      <select id="role-scope">
+      <select id="role-scope" onchange="toggleDesignatedSelector()">
         ${scopeOptions}
       </select>
     </div>
-    <div class="form-group">
-      <label>父角色（可选）</label>
-      <select id="role-parent">
-        <option value="">无（不继承）</option>
-        ${parentOptions}
-      </select>
+    <div class="form-group" id="designated-companies-box" style="display:${designatedVisible};">
+      <label>指定公司 <span style="color:var(--danger)">*</span></label>
+      <div id="designated-companies-list" style="max-height:200px;overflow-y:auto;border:1px solid var(--gray-200);border-radius:var(--radius);padding:8px;">
+        <div style="color:var(--gray-400);font-size:13px;">加载中...</div>
+      </div>
+      <div style="font-size:12px;color:var(--gray-400);margin-top:4px;">勾选该角色可以访问的公司</div>
     </div>
     <div class="form-group">
       <label>权限配置</label>
@@ -318,12 +374,69 @@ function openEditRole(roleId) {
   `;
 
   showModal('编辑角色 - ' + role.name, content, footer);
+
+  // 加载指定公司列表
+  if (role.data_scope === 'designated') {
+    await loadDesignatedCompanies(roleId);
+  }
 }
 
+// ========== 指定公司选择器 ==========
+window.toggleDesignatedSelector = async function() {
+  const scope = document.getElementById('role-scope').value;
+  const box = document.getElementById('designated-companies-box');
+  if (scope === 'designated') {
+    box.style.display = '';
+    await loadDesignatedCompanies();
+  } else {
+    box.style.display = 'none';
+  }
+};
+
+async function loadDesignatedCompanies(currentRoleId) {
+  const listEl = document.getElementById('designated-companies-list');
+  if (!listEl) return;
+
+  try {
+    // 并行加载所有公司和已选中的指定公司
+    const [allCompanies, designated] = await Promise.all([
+      supabase.query('companies', { select: 'id,name,type', order: 'name.asc' }),
+      currentRoleId ? supabase.query('role_designated_companies', {
+        select: 'company_id',
+        filter: { role_id: currentRoleId }
+      }) : Promise.resolve([])
+    ]);
+
+    const designatedIds = new Set((designated || []).map(d => d.company_id));
+    const companies = allCompanies || [];
+
+    if (companies.length === 0) {
+      listEl.innerHTML = '<div style="color:var(--gray-400);font-size:13px;">暂无公司数据，请先在公司管理中添加公司</div>';
+      return;
+    }
+
+    listEl.innerHTML = companies.map(c => `
+      <label style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;border-radius:4px;" onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background='transparent'">
+        <input type="checkbox" name="designated-company" value="${c.id}" ${designatedIds.has(c.id) ? 'checked' : ''}>
+        <span style="font-size:13px;color:var(--gray-800);">${c.name || c.id}</span>
+        <span style="font-size:11px;color:var(--gray-400);margin-left:auto;">${c.type || ''}</span>
+      </label>
+    `).join('');
+  } catch (e) {
+    listEl.innerHTML = `<div style="color:var(--danger);font-size:13px;">加载公司列表失败: ${e.message}</div>`;
+  }
+}
+
+function getSelectedDesignatedCompanies() {
+  return Array.from(document.querySelectorAll('input[name="designated-company"]:checked'))
+    .map(cb => cb.value);
+}
+
+// ========== 权限树渲染 ==========
 function renderPermTreeForForm(treeData, checkedPerms) {
   return treeData.map(group => {
     const groupPerms = group.permissions || [];
-    const allChecked = groupPerms.every(p => checkedPerms.includes(p.id));
+    const allChecked = groupPerms.length > 0 && groupPerms.every(p => checkedPerms.includes(p.id));
     const someChecked = groupPerms.some(p => checkedPerms.includes(p.id));
 
     return `
@@ -381,33 +494,51 @@ function updateGroupCheckbox(checkbox) {
   }
 }
 
+// ========== 保存角色（真实写入数据库） ==========
 async function saveRole() {
   const name = document.getElementById('role-name').value.trim();
   const desc = document.getElementById('role-desc').value.trim();
   const scope = document.getElementById('role-scope').value;
-  const parent = document.getElementById('role-parent').value;
 
   if (!name) return showToast('请输入角色名称', true);
+  if (scope === 'designated' && getSelectedDesignatedCompanies().length === 0) {
+    return showToast('选择「指定公司」权限范围时，请至少选择一个公司', true);
+  }
 
-  // 收集选中的权限
   const permTree = document.getElementById('role-perm-tree');
   const checkedPerms = Array.from(permTree.querySelectorAll('.perm-tree-children input[type="checkbox"]:checked'))
     .map(cb => cb.value);
 
   try {
-    // 模拟保存（实际场景调用 supabase RPC 或 insert）
-    const newRole = {
-      id: 'role_' + Date.now(),
+    // 1. 插入角色记录
+    const roleData = {
       name,
       description: desc,
       data_scope: scope,
-      parent_role_id: parent || null,
-      permissions: checkedPerms,
-      role_type: 'custom',
-      user_count: 0,
-      created_at: new Date().toISOString()
+      role_type: 'custom'
     };
-    rolesData.unshift(newRole);
+    const result = await dbInsert('roles', roleData);
+    const newRole = result[0] || result;
+    const roleId = newRole.id;
+
+    // 2. 插入角色-权限映射
+    if (checkedPerms.length > 0) {
+      const permRecords = checkedPerms.map(pid => ({ role_id: roleId, permission_id: pid }));
+      await dbInsert('role_permissions', permRecords);
+    }
+
+    // 3. 如果是designated，插入指定公司
+    if (scope === 'designated') {
+      const companyIds = getSelectedDesignatedCompanies();
+      if (companyIds.length > 0) {
+        const designatedRecords = companyIds.map(cid => ({ role_id: roleId, company_id: cid }));
+        await dbInsert('role_designated_companies', designatedRecords);
+      }
+    }
+
+    // 4. 记录审计日志
+    await writeAuditLog('role:create', `角色：${name}`, `创建角色「${name}」，权限范围：${SCOPE_MAP[scope]}，权限数：${checkedPerms.length}`, roleId, null, { ...roleData, permissions: checkedPerms });
+
     closeModal();
     showToast('角色创建成功');
     renderRoles();
@@ -416,23 +547,50 @@ async function saveRole() {
   }
 }
 
+// ========== 更新角色（真实写入数据库） ==========
 async function updateRole(roleId) {
   const name = document.getElementById('role-name').value.trim();
   const desc = document.getElementById('role-desc').value.trim();
   const scope = document.getElementById('role-scope').value;
-  const parent = document.getElementById('role-parent').value;
 
   if (!name) return showToast('请输入角色名称', true);
+  if (scope === 'designated' && getSelectedDesignatedCompanies().length === 0) {
+    return showToast('选择「指定公司」权限范围时，请至少选择一个公司', true);
+  }
 
   const permTree = document.getElementById('role-perm-tree');
   const checkedPerms = Array.from(permTree.querySelectorAll('.perm-tree-children input[type="checkbox"]:checked'))
     .map(cb => cb.value);
 
   try {
-    const idx = rolesData.findIndex(r => r.id === roleId);
-    if (idx >= 0) {
-      rolesData[idx] = { ...rolesData[idx], name, description: desc, data_scope: scope, parent_role_id: parent || null, permissions: checkedPerms };
+    // 1. 更新角色基本信息
+    const oldRole = rolesData.find(r => r.id === roleId);
+    await supabase.update('roles', {
+      name,
+      description: desc,
+      data_scope: scope
+    }, { id: roleId });
+
+    // 2. 删除旧权限映射，重新插入
+    await dbDelete('role_permissions', { role_id: roleId });
+    if (checkedPerms.length > 0) {
+      const permRecords = checkedPerms.map(pid => ({ role_id: roleId, permission_id: pid }));
+      await dbInsert('role_permissions', permRecords);
     }
+
+    // 3. 处理指定公司
+    await dbDelete('role_designated_companies', { role_id: roleId });
+    if (scope === 'designated') {
+      const companyIds = getSelectedDesignatedCompanies();
+      if (companyIds.length > 0) {
+        const designatedRecords = companyIds.map(cid => ({ role_id: roleId, company_id: cid }));
+        await dbInsert('role_designated_companies', designatedRecords);
+      }
+    }
+
+    // 4. 记录审计日志
+    await writeAuditLog('role:edit', `角色：${name}`, `编辑角色「${name}」，权限范围：${SCOPE_MAP[scope]}，权限数：${checkedPerms.length}`, roleId, oldRole, { name, description: desc, data_scope: scope, permissions: checkedPerms });
+
     closeModal();
     showToast('角色更新成功');
     renderRoles();
@@ -441,13 +599,23 @@ async function updateRole(roleId) {
   }
 }
 
+// ========== 删除角色（真实删除） ==========
 function deleteRole(roleId, roleName) {
   showConfirm(
     '删除角色',
     `确定要删除角色「${roleName}」吗？删除后该角色下的用户将失去对应权限。`,
     async () => {
       try {
-        rolesData = rolesData.filter(r => r.id !== roleId);
+        // 删除关联数据
+        await dbDelete('role_permissions', { role_id: roleId });
+        await dbDelete('role_designated_companies', { role_id: roleId });
+        await dbDelete('user_roles', { role_id: roleId });
+        // 删除角色本身
+        await dbDelete('roles', { id: roleId });
+
+        // 记录审计日志
+        await writeAuditLog('role:delete', `角色：${roleName}`, `删除角色「${roleName}」`, roleId);
+
         showToast('角色已删除');
         renderRoles();
       } catch (err) {
@@ -458,12 +626,18 @@ function deleteRole(roleId, roleName) {
 }
 
 // ========== 权限配置面板 ==========
-function openPermConfig(roleId) {
-  const role = rolesData.find(r => r.id === roleId);
+async function openPermConfig(roleId) {
+  const roles = await supabase.query('roles', { select: '*', filter: { id: roleId } });
+  const role = roles && roles.length > 0 ? roles[0] : null;
   if (!role) return showToast('角色不存在', true);
 
-  const checkedPerms = role.permissions || [];
-  // 权限委托约束：模拟一些不可选权限（当角色是custom类型时，不能授予超过自己的权限）
+  // 查询已有权限
+  const rolePerms = await supabase.query('role_permissions', {
+    select: 'permission_id',
+    filter: { role_id: roleId }
+  });
+  const checkedPerms = (rolePerms || []).map(rp => rp.permission_id);
+
   const disabledPerms = role.role_type === 'custom' ? ['rbac:role_delete', 'system:settings'] : [];
 
   const content = `
@@ -474,9 +648,6 @@ function openPermConfig(roleId) {
           <button class="btn btn-sm btn-outline" onclick="expandAllPermGroups()">全部展开</button>
           <button class="btn btn-sm btn-outline" onclick="collapseAllPermGroups()">全部收起</button>
         </div>
-      </div>
-      <div style="font-size:12px;color:var(--gray-400);margin-bottom:12px;">
-        💡 灰色项表示当前角色无权授予（权限委托约束）
       </div>
     </div>
     <div class="perm-tree-container" id="config-perm-tree">
@@ -542,10 +713,17 @@ async function savePermConfig(roleId) {
     .map(cb => cb.value);
 
   try {
-    const idx = rolesData.findIndex(r => r.id === roleId);
-    if (idx >= 0) {
-      rolesData[idx].permissions = checkedPerms;
+    // 删除旧权限，重新插入
+    await dbDelete('role_permissions', { role_id: roleId });
+    if (checkedPerms.length > 0) {
+      const permRecords = checkedPerms.map(pid => ({ role_id: roleId, permission_id: pid }));
+      await dbInsert('role_permissions', permRecords);
     }
+
+    // 审计日志
+    const role = rolesData.find(r => r.id === roleId);
+    await writeAuditLog('role:perm_change', `角色：${role ? role.name : roleId}`, `变更权限配置，当前权限数：${checkedPerms.length}`, roleId, null, { permissions: checkedPerms });
+
     closeModal();
     showToast('权限配置已保存');
     renderRoles();

@@ -13,8 +13,10 @@ const OP_TYPE_MAP = {
   'user:assign_role': '分配角色',
   'user:remove_role': '移除角色',
   'user:perm_view': '查看权限',
+  'user:create': '创建用户',
   'company:create': '创建公司',
   'company:edit': '编辑公司',
+  'company:delete': '删除公司',
   'company:team_create': '创建团队',
   'company:team_delete': '删除团队',
   'login': '用户登录',
@@ -34,7 +36,7 @@ function getOpTypeBadge(type) {
   if (type && type.startsWith('role:')) return `<span class="badge badge-primary">${getOpTypeLabel(type)}</span>`;
   if (type && type.startsWith('user:')) return `<span class="badge badge-info">${getOpTypeLabel(type)}</span>`;
   if (type && type.startsWith('company:')) return `<span class="badge badge-warning">${getOpTypeLabel(type)}</span>`;
-  if (type && type.startsWith('login') || type === 'logout') return `<span class="badge badge-gray">${getOpTypeLabel(type)}</span>`;
+  if ((type && type.startsWith('login')) || type === 'logout') return `<span class="badge badge-gray">${getOpTypeLabel(type)}</span>`;
   if (type && type.startsWith('data:')) return `<span class="badge badge-success">${getOpTypeLabel(type)}</span>`;
   if (type && (type.startsWith('supplier:') || type.startsWith('order:'))) return `<span class="badge badge-warning">${getOpTypeLabel(type)}</span>`;
   return `<span class="badge badge-gray">${getOpTypeLabel(type)}</span>`;
@@ -52,15 +54,10 @@ async function renderAudit() {
     });
 
     auditData = logs || [];
-
-    // 如果数据库没有数据，提供演示数据
-    if (auditData.length === 0) {
-      auditData = generateDemoAuditData();
-    }
-
+    auditPage = 1;
     renderAuditPage();
   } catch (err) {
-    body.innerHTML = `<div class="empty-state"><div class="empty-icon">📜</div><p>加载审计日志失败，请稍后重试</p></div>`;
+    body.innerHTML = `<div class="empty-state"><div class="empty-icon">📜</div><p>加载审计日志失败：${err.message}</p></div>`;
   }
 }
 
@@ -197,6 +194,21 @@ function viewAuditDetail(logId) {
   const log = auditData.find(l => l.id === logId);
   if (!log) return showToast('记录不存在', true);
 
+  let beforeDataStr = '无';
+  let afterDataStr = '无';
+  try {
+    if (log.before_data) {
+      const parsed = typeof log.before_data === 'string' ? JSON.parse(log.before_data) : log.before_data;
+      beforeDataStr = JSON.stringify(parsed, null, 2);
+    }
+  } catch(e) { beforeDataStr = String(log.before_data || '无'); }
+  try {
+    if (log.after_data) {
+      const parsed = typeof log.after_data === 'string' ? JSON.parse(log.after_data) : log.after_data;
+      afterDataStr = JSON.stringify(parsed, null, 2);
+    }
+  } catch(e) { afterDataStr = String(log.after_data || '无'); }
+
   const content = `
     <div class="detail-grid">
       <div class="detail-item">
@@ -227,10 +239,6 @@ function viewAuditDetail(logId) {
         <span class="detail-label">IP地址</span>
         <span class="detail-value">${log.ip_address || '-'}</span>
       </div>
-      <div class="detail-item">
-        <span class="detail-label">User Agent</span>
-        <span class="detail-value" style="font-size:12px;word-break:break-all;">${log.user_agent || '-'}</span>
-      </div>
       <div class="detail-item full">
         <span class="detail-label">操作详情</span>
         <span class="detail-value" style="font-size:13px;line-height:1.6;">${log.detail || '无详细信息'}</span>
@@ -238,51 +246,15 @@ function viewAuditDetail(logId) {
       ${log.before_data || log.after_data ? `
         <div class="detail-item full">
           <span class="detail-label">变更前</span>
-          <pre style="background:var(--gray-50);padding:12px;border-radius:var(--radius);font-size:12px;overflow-x:auto;max-height:200px;border:1px solid var(--gray-200);">${log.before_data ? JSON.stringify(JSON.parse(log.before_data), null, 2) : '无'}</pre>
+          <pre style="background:var(--gray-50);padding:12px;border-radius:var(--radius);font-size:12px;overflow-x:auto;max-height:200px;border:1px solid var(--gray-200);">${beforeDataStr}</pre>
         </div>
         <div class="detail-item full">
           <span class="detail-label">变更后</span>
-          <pre style="background:var(--primary-bg);padding:12px;border-radius:var(--radius);font-size:12px;overflow-x:auto;max-height:200px;border:1px solid var(--gray-200);">${log.after_data ? JSON.stringify(JSON.parse(log.after_data), null, 2) : '无'}</pre>
+          <pre style="background:var(--primary-bg);padding:12px;border-radius:var(--radius);font-size:12px;overflow-x:auto;max-height:200px;border:1px solid var(--gray-200);">${afterDataStr}</pre>
         </div>
       ` : ''}
     </div>
   `;
 
   showModal('审计日志详情', content, '<button class="btn btn-outline" onclick="closeModal()">关闭</button>');
-}
-
-// 生成演示审计数据
-function generateDemoAuditData() {
-  const operators = ['admin@yicai.app', 'manager@yicai.app', 'hr@yicai.app'];
-  const opTypes = Object.keys(OP_TYPE_MAP);
-  const targets = ['角色：采购经理', '用户：zhangsan@yicai.app', '公司：广州美妆集团', '角色：运营管理员', '团队：华东采购组'];
-  const details = [
-    '修改了角色的数据权限范围为「本公司」',
-    '为用户分配了「采购经理」角色',
-    '创建了新的子公司关联关系',
-    '调整了权限树中的3项按钮权限',
-    '删除了自定义角色「临时查看」',
-    '导出了平台用户权限汇总数据',
-    '审核通过了供应商「上海化妆品有限公司」',
-    '确认了订单 ORD-20260730-001',
-  ];
-
-  const data = [];
-  for (let i = 0; i < 35; i++) {
-    const date = new Date();
-    date.setHours(date.getHours() - Math.floor(Math.random() * 720));
-    data.push({
-      id: 'log_' + (1000 + i),
-      operator: operators[Math.floor(Math.random() * operators.length)],
-      operator_email: operators[Math.floor(Math.random() * operators.length)],
-      operator_id: 'user_' + Math.random().toString(36).substr(2, 8),
-      operation_type: opTypes[Math.floor(Math.random() * opTypes.length)],
-      target: targets[Math.floor(Math.random() * targets.length)],
-      target_id: 'id_' + Math.random().toString(36).substr(2, 8),
-      detail: details[Math.floor(Math.random() * details.length)],
-      ip_address: `192.168.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
-      created_at: date.toISOString()
-    });
-  }
-  return data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 }
