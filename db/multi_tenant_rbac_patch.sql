@@ -10,10 +10,11 @@
 -- 先删除约束，再重建为可空
 ALTER TABLE user_roles DROP CONSTRAINT IF EXISTS user_roles_company_id_not_null;
 ALTER TABLE user_roles ALTER COLUMN company_id DROP NOT NULL;
--- 注意：UNIQUE约束也需要调整以支持NULL company_id
+-- 注意：PostgreSQL UNIQUE约束不支持表达式，改用唯一索引
 ALTER TABLE user_roles DROP CONSTRAINT IF EXISTS user_roles_user_id_role_id_company_id_key;
-ALTER TABLE user_roles ADD CONSTRAINT user_roles_unique_assignment 
-  UNIQUE (user_id, role_id, COALESCE(company_id, 0));
+DROP INDEX IF EXISTS user_roles_unique_assignment;
+CREATE UNIQUE INDEX user_roles_unique_assignment 
+  ON user_roles (user_id, role_id, COALESCE(company_id, 0));
 
 -- ============================================
 -- 2. 新增供应商端权限
@@ -45,6 +46,13 @@ ON CONFLICT DO NOTHING;
 INSERT INTO roles (company_id, name, description, is_system, data_scope)
 VALUES (NULL, '品牌方公司管理员_模板', '品牌方公司管理员角色模板', true, 'company')
 ON CONFLICT DO NOTHING;
+
+-- ============================================
+-- 3.5 扩展 data_scope CHECK 约束，新增 'own' 值
+-- ============================================
+ALTER TABLE roles DROP CONSTRAINT IF EXISTS roles_data_scope_check;
+ALTER TABLE roles ADD CONSTRAINT roles_data_scope_check
+  CHECK (data_scope IN ('self', 'team', 'company', 'designated', 'platform', 'own'));
 
 -- ============================================
 -- 4. 创建"采购个人用户"默认注册角色

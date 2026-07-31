@@ -2,8 +2,45 @@
 const SUPABASE_URL = 'https://spb-m06skr4cysol4lwz.supabase.opentrust.net';
 const SUPABASE_ANON_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiIsInJlZiI6InNwYi1tMDZza3I0Y3lzb2w0bHd6IiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE3ODUzNzcwNjIsImV4cCI6MjEwMDk1MzA2Mn0.2OO2jmTetq6vOE4xTRruNMXVUI89ATMIStpIl4ul3kI';
 
+// 检查 token 是否即将过期（5分钟内过期视为已过期）
+function isTokenExpired(token) {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.exp * 1000 - Date.now() < 5 * 60 * 1000;
+  } catch { return true; }
+}
+
+// 刷新 token
+async function refreshTokenIfNeeded() {
+  const accessToken = localStorage.getItem('yicai_admin_token');
+  const refreshTok = localStorage.getItem('yicai_admin_refresh');
+  if (!accessToken || !refreshTok) return;
+  if (!isTokenExpired(accessToken)) return;
+
+  try {
+    const resp = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshTok })
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      localStorage.setItem('yicai_admin_token', data.access_token);
+      localStorage.setItem('yicai_admin_refresh', data.refresh_token);
+    } else {
+      // refresh 也失败了，清除登录态
+      localStorage.removeItem('yicai_admin_token');
+      localStorage.removeItem('yicai_admin_refresh');
+      if (typeof logout === 'function') logout();
+    }
+  } catch (e) {
+    console.warn('Token refresh failed:', e);
+  }
+}
+
 // 获取当前认证 token（登录后用用户token，否则用anon key）
-function getAuthHeaders() {
+async function getAuthHeaders() {
+  await refreshTokenIfNeeded();
   const userToken = localStorage.getItem('yicai_admin_token');
   const authToken = userToken || SUPABASE_ANON_KEY;
   return {
@@ -61,7 +98,7 @@ const supabase = {
 
     try {
       const response = await fetch(url, {
-        headers: getAuthHeaders(),
+        headers: await getAuthHeaders(),
         signal: controller.signal
       });
       clearTimeout(timeoutId);
@@ -81,7 +118,7 @@ const supabase = {
     const url = `${this.url}/rest/v1/rpc/${functionName}`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: getAuthHeaders(),
+      headers: await getAuthHeaders(),
       body: JSON.stringify(params)
     });
     if (!response.ok) throw new Error(`RPC failed: ${response.status}`);
@@ -96,7 +133,7 @@ const supabase = {
     }
     url += queryParams.join('&');
 
-    const headers = getAuthHeaders();
+    const headers = await getAuthHeaders();
     headers['Prefer'] = 'return=representation';
     const response = await fetch(url, {
       method: 'PATCH',
@@ -134,7 +171,7 @@ const supabase = {
     if (queryParams.length > 0) {
       url += '&' + queryParams.join('&');
     }
-    const headers = getAuthHeaders();
+    const headers = await getAuthHeaders();
     headers['Prefer'] = 'count=exact';
     const response = await fetch(url, {
       headers
@@ -158,7 +195,7 @@ const supabase = {
       url += '&' + queryParams.join('&');
     }
     const response = await fetch(url, {
-      headers: getAuthHeaders()
+      headers: await getAuthHeaders()
     });
     if (!response.ok) return [];
     return response.json();
