@@ -260,7 +260,7 @@ function showToast(message, isError = false) {
   const root = document.getElementById('toast-root');
   const toast = document.createElement('div');
   toast.className = `toast ${isError ? 'error' : ''}`;
-  toast.innerHTML = `<span>${isError ? '⚠️' : '✅'}</span><span>${message}</span>`;
+  toast.innerHTML = `<span>${isError ? '⚠️' : '✅'}</span><span>${escapeHtml(message)}</span>`;
   root.appendChild(toast);
   requestAnimationFrame(() => toast.classList.add('show'));
   setTimeout(() => {
@@ -303,7 +303,7 @@ function showConfirm(title, message, onConfirm) {
     <div class="confirm-dialog">
       <div class="confirm-icon">⚠️</div>
       <h4>${title}</h4>
-      <p>${message}</p>
+      <p>${escapeHtml(message)}</p>
       <div class="confirm-btns">
         <button class="btn btn-outline" onclick="this.closest('.confirm-overlay').remove()">取消</button>
         <button class="btn btn-primary" id="confirm-ok-btn">确认</button>

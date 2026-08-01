@@ -194,14 +194,14 @@ async function renderRoles() {
             ${pageData.length === 0 ? '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--gray-400)">暂无角色，点击「新建角色」创建</td></tr>' : ''}
             ${pageData.map(r => `
               <tr>
-                <td style="font-weight:500;color:var(--gray-900)">${r.name || '-'}</td>
-                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.description || ''}">${r.description || '-'}</td>
+                <td style="font-weight:500;color:var(--gray-900)">${escapeHtml(r.name || '-')}</td>
+                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(r.description || '')}">${escapeHtml(r.description || '-')}</td>
                 <td><span class="badge badge-info">${SCOPE_MAP[r.data_scope] || r.data_scope || '-'}</span></td>
                 <td>${typeBadge(r.is_system ? 'builtin' : 'custom')}</td>
                 <td>
                   <button class="btn btn-sm btn-outline" onclick="openEditRole('${r.id}')">编辑</button>
                   <button class="btn btn-sm btn-outline" onclick="openPermConfig('${r.id}')">权限</button>
-                  ${!r.is_system ? `<button class="btn btn-sm btn-danger" onclick="deleteRole('${r.id}','${(r.name || '').replace(/'/g, "\\'")}')">删除</button>` : ''}
+                  ${!r.is_system ? `<button class="btn btn-sm btn-danger" onclick="deleteRole('${r.id}','${escapeHtml(r.name || '').replace(/'/g, "\\'")}')">删除</button>` : ''}
                 </td>
               </tr>
             `).join('')}
@@ -249,14 +249,14 @@ function filterRoles(val) {
     };
     tbody.innerHTML = filtered.slice(0, rolesPageSize).map(r => `
       <tr>
-        <td style="font-weight:500;color:var(--gray-900)">${r.name || '-'}</td>
-        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.description || ''}">${r.description || '-'}</td>
+        <td style="font-weight:500;color:var(--gray-900)">${escapeHtml(r.name || '-')}</td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(r.description || '')}">${escapeHtml(r.description || '-')}</td>
         <td><span class="badge badge-info">${SCOPE_MAP[r.data_scope] || r.data_scope || '-'}</span></td>
         <td>${typeBadge(r.is_system ? 'builtin' : 'custom')}</td>
         <td>
           <button class="btn btn-sm btn-outline" onclick="openEditRole('${r.id}')">编辑</button>
           <button class="btn btn-sm btn-outline" onclick="openPermConfig('${r.id}')">权限</button>
-          ${!r.is_system ? `<button class="btn btn-sm btn-danger" onclick="deleteRole('${r.id}','${(r.name || '').replace(/'/g, "\\'")}')">删除</button>` : ''}
+          ${!r.is_system ? `<button class="btn btn-sm btn-danger" onclick="deleteRole('${r.id}','${escapeHtml(r.name || '').replace(/'/g, "\\'")}')">删除</button>` : ''}
         </td>
       </tr>
     `).join('');
@@ -337,11 +337,11 @@ async function openEditRole(roleId) {
   const content = `
     <div class="form-group">
       <label>角色名称 <span style="color:var(--danger)">*</span></label>
-      <input type="text" id="role-name" value="${role.name || ''}" maxlength="50">
+      <input type="text" id="role-name" value="${escapeHtml(role.name || '')}" maxlength="50">
     </div>
     <div class="form-group">
       <label>角色描述</label>
-      <textarea id="role-desc" rows="3">${role.description || ''}</textarea>
+      <textarea id="role-desc" rows="3">${escapeHtml(role.description || '')}</textarea>
     </div>
     <div class="form-group">
       <label>数据权限范围</label>
@@ -414,8 +414,8 @@ async function loadDesignatedCompanies(currentRoleId) {
     listEl.innerHTML = companies.map(c => `
       <label style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;border-radius:4px;" onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background='transparent'">
         <input type="checkbox" name="designated-company" value="${c.id}" ${designatedIds.has(c.id) ? 'checked' : ''}>
-        <span style="font-size:13px;color:var(--gray-800);">${c.name || c.id}</span>
-        <span style="font-size:11px;color:var(--gray-400);margin-left:auto;">${c.type || ''}</span>
+        <span style="font-size:13px;color:var(--gray-800);">${escapeHtml(c.name || c.id)}</span>
+        <span style="font-size:11px;color:var(--gray-400);margin-left:auto;">${escapeHtml(c.type || '')}</span>
       </label>
     `).join('');
   } catch (e) {
@@ -464,7 +464,7 @@ function renderPermTreeGroups(treeData, checkedPerms, platformFilter) {
           <span class="perm-tree-arrow">▶</span>
           <label class="perm-tree-checkbox" onclick="event.stopPropagation()">
             <input type="checkbox" ${allChecked ? 'checked' : ''} onchange="toggleGroupPerm(this, '${group.group}')">
-            <span class="perm-group-icon">${group.icon || '📁'}</span>
+            <span class="perm-group-icon">${escapeHtml(group.icon || '📁')}</span>
             <span class="perm-group-name">${group.group}</span>
             <span class="perm-group-count">${groupPerms.length}项</span>
           </label>
@@ -475,7 +475,7 @@ function renderPermTreeGroups(treeData, checkedPerms, platformFilter) {
               <input type="checkbox" value="${p.id}" ${checkedPerms.includes(p.id) ? 'checked' : ''} onchange="updateGroupCheckbox(this)">
               <span class="perm-item-label">${p.label}</span>
               <span class="perm-item-type ${p.type === 'menu' ? 'type-menu' : 'type-button'}">${p.type === 'menu' ? '菜单' : '按钮'}</span>
-              <span class="perm-item-platform platform-${p.platform || 'all'}">${getPlatformLabel(p.platform)}</span>
+              <span class="perm-item-platform platform-${escapeHtml(p.platform || 'all')}">${getPlatformLabel(p.platform)}</span>
             </label>
           `).join('')}
         </div>
@@ -678,7 +678,7 @@ async function openPermConfig(roleId) {
   const content = `
     <div style="margin-bottom:16px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <span style="font-size:13px;color:var(--gray-500);">为「${role.name}」配置权限</span>
+        <span style="font-size:13px;color:var(--gray-500);">为「${escapeHtml(role.name)}」配置权限</span>
         <div>
           <button class="btn btn-sm btn-outline" onclick="expandAllPermGroups()">全部展开</button>
           <button class="btn btn-sm btn-outline" onclick="collapseAllPermGroups()">全部收起</button>
@@ -732,7 +732,7 @@ function renderPermTreeConfigGroups(treeData, checkedPerms, disabledPerms, platf
           <span class="perm-tree-arrow">▶</span>
           <label class="perm-tree-checkbox" onclick="event.stopPropagation()">
             <input type="checkbox" ${allChecked ? 'checked' : ''} onchange="toggleGroupPerm(this, '${group.group}')">
-            <span class="perm-group-icon">${group.icon || '📁'}</span>
+            <span class="perm-group-icon">${escapeHtml(group.icon || '📁')}</span>
             <span class="perm-group-name">${group.group}</span>
           </label>
         </div>
@@ -745,7 +745,7 @@ function renderPermTreeConfigGroups(treeData, checkedPerms, disabledPerms, platf
                 <input type="checkbox" value="${p.id}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''} onchange="updateGroupCheckbox(this)">
                 <span class="perm-item-label">${p.label}</span>
                 <span class="perm-item-type ${p.type === 'menu' ? 'type-menu' : 'type-button'}">${p.type === 'menu' ? '菜单' : '按钮'}</span>
-                <span class="perm-item-platform platform-${p.platform || 'all'}">${getPlatformLabel(p.platform)}</span>
+                <span class="perm-item-platform platform-${escapeHtml(p.platform || 'all')}">${getPlatformLabel(p.platform)}</span>
               </label>
             `;
           }).join('')}

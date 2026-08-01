@@ -279,7 +279,7 @@ async function viewBuyerDetail(companyId) {
       <div class="detail-grid">
         <div class="detail-item">
           <span class="detail-label">公司名称</span>
-          <span class="detail-value">${buyer.name || '-'}</span>
+          <span class="detail-value">${escapeHtml(buyer.name || '-')}</span>
         </div>
         <div class="detail-item">
           <span class="detail-label">管理员邮箱</span>
@@ -296,7 +296,7 @@ async function viewBuyerDetail(companyId) {
       </div>
     `;
 
-    showModal(`${buyer.name} - 企业采购方详情`, content);
+    showModal(`${escapeHtml(buyer.name)} - 企业采购方详情`, content);
   } catch (err) {
     showToast('加载详情失败: ' + err.message, true);
   }

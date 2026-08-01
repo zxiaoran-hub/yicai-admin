@@ -69,14 +69,14 @@ async function renderUsersPerm() {
               const scopeDisplay = SCOPE_MAP[u._data_scope] || u._data_scope || '-';
               return `
                 <tr>
-                  <td style="font-weight:500;color:var(--gray-900)">${u._user_email || '-'}</td>
-                  <td><span class="badge badge-primary">${roleDisplay}</span></td>
-                  <td>${u._company_name || '-'}</td>
-                  <td><span class="badge badge-info">${scopeDisplay}</span></td>
+                  <td style="font-weight:500;color:var(--gray-900)">${escapeHtml(u._user_email || '-')}</td>
+                  <td><span class="badge badge-primary">${escapeHtml(roleDisplay)}</span></td>
+                  <td>${escapeHtml(u._company_name || '-')}</td>
+                  <td><span class="badge badge-info">${escapeHtml(scopeDisplay)}</span></td>
                   <td>${expiryDisplay}</td>
                   <td>${statusBadge}</td>
                   <td>
-                    <button class="btn btn-sm btn-outline" onclick="viewUserPerms('${u._user_email || u.user_id}')">权限</button>
+                    <button class="btn btn-sm btn-outline" onclick="viewUserPerms('${escapeHtml(u._user_email || u.user_id)}')">权限</button>
                     <button class="btn btn-sm btn-outline" onclick="editUserRole('${u.id}')">编辑</button>
                     <button class="btn btn-sm btn-danger" onclick="removeUserRole('${u.id}','${(u._user_email || u.user_id || '').replace(/'/g, "\\'")}')">移除</button>
                   </td>
@@ -131,14 +131,14 @@ function filterUsersPerm(val) {
       const scopeDisplay = SCOPE_MAP[u._data_scope] || u._data_scope || '-';
       return `
         <tr>
-          <td style="font-weight:500;color:var(--gray-900)">${u._user_email || '-'}</td>
-          <td><span class="badge badge-primary">${roleDisplay}</span></td>
-          <td>${u._company_name || '-'}</td>
-          <td><span class="badge badge-info">${scopeDisplay}</span></td>
+          <td style="font-weight:500;color:var(--gray-900)">${escapeHtml(u._user_email || '-')}</td>
+          <td><span class="badge badge-primary">${escapeHtml(roleDisplay)}</span></td>
+          <td>${escapeHtml(u._company_name || '-')}</td>
+          <td><span class="badge badge-info">${escapeHtml(scopeDisplay)}</span></td>
           <td>${expiryDisplay}</td>
           <td>${statusBadge}</td>
           <td>
-            <button class="btn btn-sm btn-outline" onclick="viewUserPerms('${u._user_email || u.user_id}')">权限</button>
+            <button class="btn btn-sm btn-outline" onclick="viewUserPerms('${escapeHtml(u._user_email || u.user_id)}')">权限</button>
             <button class="btn btn-sm btn-outline" onclick="editUserRole('${u.id}')">编辑</button>
             <button class="btn btn-sm btn-danger" onclick="removeUserRole('${u.id}','${(u._user_email || u.user_id || '').replace(/'/g, "\\'")}')">移除</button>
           </td>
@@ -157,11 +157,11 @@ async function openCreateUser() {
   ]);
 
   const companyOptions = (companies || []).map(c =>
-    `<option value="${c.id}">${c.name || c.id}</option>`
+    `<option value="${c.id}">${escapeHtml(c.name || c.id)}</option>`
   ).join('');
 
   const roleOptions = (roles || []).map(r =>
-    `<option value="${r.id}">${r.name} (${SCOPE_MAP[r.data_scope] || r.data_scope})</option>`
+    `<option value="${r.id}">${escapeHtml(r.name)} (${SCOPE_MAP[r.data_scope] || r.data_scope})</option>`
   ).join('');
 
   const content = `
@@ -280,11 +280,11 @@ async function openAssignRole() {
   ]);
 
   const companyOptions = (companies || []).map(c =>
-    `<option value="${c.id}">${c.name || c.id}</option>`
+    `<option value="${c.id}">${escapeHtml(c.name || c.id)}</option>`
   ).join('');
 
   const roleOptions = (roles || []).map(r =>
-    `<option value="${r.id}">${r.name} (${SCOPE_MAP[r.data_scope] || r.data_scope})</option>`
+    `<option value="${r.id}">${escapeHtml(r.name)} (${SCOPE_MAP[r.data_scope] || r.data_scope})</option>`
   ).join('');
 
   const content = `
@@ -393,11 +393,11 @@ async function editUserRole(recordId) {
   ]);
 
   const companyOptions = (companies || []).map(c =>
-    `<option value="${c.id}" ${record.company_id === c.id ? 'selected' : ''}>${c.name || c.id}</option>`
+    `<option value="${c.id}" ${record.company_id === c.id ? 'selected' : ''}>${escapeHtml(c.name || c.id)}</option>`
   ).join('');
 
   const roleOptions = (roles || []).map(r =>
-    `<option value="${r.id}" ${record.role_id === r.id ? 'selected' : ''}>${r.name} (${SCOPE_MAP[r.data_scope] || r.data_scope})</option>`
+    `<option value="${r.id}" ${record.role_id === r.id ? 'selected' : ''}>${escapeHtml(r.name)} (${SCOPE_MAP[r.data_scope] || r.data_scope})</option>`
   ).join('');
 
   const expiresValue = record.expires_at ? record.expires_at.slice(0, 16) : '';
@@ -405,7 +405,7 @@ async function editUserRole(recordId) {
   const content = `
     <div class="form-group">
       <label>用户邮箱</label>
-      <input type="email" value="${record._user_email || record.user_id || ''}" disabled>
+      <input type="email" value="${escapeHtml(record._user_email || record.user_id || '')}" disabled>
     </div>
     <div class="form-group">
       <label>选择角色</label>

@@ -61,9 +61,9 @@ async function renderInquiries() {
             ${pageData.length === 0 ? `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--gray-400)">暂无数据</td></tr>` : ''}
             ${pageData.map(i => `
               <tr>
-                <td style="font-weight:500;color:var(--gray-900);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${i.title || '-'}</td>
-                <td>${i.category || '-'}</td>
-                <td>${i.quantity || '-'} ${i.unit || ''}</td>
+                <td style="font-weight:500;color:var(--gray-900);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(i.title || '-')}</td>
+                <td>${escapeHtml(i.category || '-')}</td>
+                <td>${escapeHtml(i.quantity || '-')} ${escapeHtml(i.unit || '')}</td>
                 <td>${formatBudget(i.budget_min, i.budget_max)}</td>
                 <td>${formatDate(i.delivery_date)}</td>
                 <td>${getStatusBadge(i.status)}</td>
@@ -141,11 +141,11 @@ async function viewInquiryDetail(inquiryId) {
       <div class="detail-grid">
         <div class="detail-item full">
           <span class="detail-label">标题</span>
-          <span class="detail-value">${i.title || '-'}</span>
+          <span class="detail-value">${escapeHtml(i.title || '-')}</span>
         </div>
         <div class="detail-item">
           <span class="detail-label">品类</span>
-          <span class="detail-value">${i.category || '-'}</span>
+          <span class="detail-value">${escapeHtml(i.category || '-')}</span>
         </div>
         <div class="detail-item">
           <span class="detail-label">状态</span>
@@ -153,7 +153,7 @@ async function viewInquiryDetail(inquiryId) {
         </div>
         <div class="detail-item">
           <span class="detail-label">数量</span>
-          <span class="detail-value">${i.quantity || '-'} ${i.unit || ''}</span>
+          <span class="detail-value">${escapeHtml(i.quantity || '-')} ${escapeHtml(i.unit || '')}</span>
         </div>
         <div class="detail-item">
           <span class="detail-label">预算范围</span>
@@ -165,7 +165,7 @@ async function viewInquiryDetail(inquiryId) {
         </div>
         <div class="detail-item">
           <span class="detail-label">交货地点</span>
-          <span class="detail-value">${i.delivery_location || '-'}</span>
+          <span class="detail-value">${escapeHtml(i.delivery_location || '-')}</span>
         </div>
         <div class="detail-item">
           <span class="detail-label">匿名发布</span>
@@ -177,7 +177,7 @@ async function viewInquiryDetail(inquiryId) {
         </div>
         <div class="detail-item full">
           <span class="detail-label">描述</span>
-          <span class="detail-value">${i.description || '-'}</span>
+          <span class="detail-value">${escapeHtml(i.description || '-')}</span>
         </div>
         <div class="detail-item full">
           <span class="detail-label">偏好认证</span>
@@ -189,7 +189,7 @@ async function viewInquiryDetail(inquiryId) {
         </div>
         <div class="detail-item">
           <span class="detail-label">采购方</span>
-          <span class="detail-value">${i.buyer_display_name || i.buyer_id || '-'}</span>
+          <span class="detail-value">${escapeHtml(i.buyer_display_name || i.buyer_id || '-')}</span>
         </div>
       </div>
       ${quotes.length > 0 ? `
@@ -210,11 +210,11 @@ async function viewInquiryDetail(inquiryId) {
             <tbody>
               ${quotes.map(q => `
                 <tr>
-                  <td>${q.supplier_name || '-'}</td>
-                  <td>${q.supplier_company || '-'}</td>
-                  <td>${q.price || '-'}</td>
-                  <td>${q.moq || '-'}</td>
-                  <td>${q.lead_time || '-'}</td>
+                  <td>${escapeHtml(q.supplier_name || '-')}</td>
+                  <td>${escapeHtml(q.supplier_company || '-')}</td>
+                  <td>${escapeHtml(q.price || '-')}</td>
+                  <td>${escapeHtml(q.moq || '-')}</td>
+                  <td>${escapeHtml(q.lead_time || '-')}</td>
                   <td>${getStatusBadge(q.status)}</td>
                   <td>${formatDate(q.created_at)}</td>
                 </tr>

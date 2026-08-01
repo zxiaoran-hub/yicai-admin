@@ -61,9 +61,9 @@ async function renderOrders() {
             ${pageData.length === 0 ? `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--gray-400)">暂无数据</td></tr>` : ''}
             ${pageData.map(o => `
               <tr>
-                <td style="font-weight:500;color:var(--gray-900)">${o.order_no || '-'}</td>
-                <td>${o.supplier_name || '-'}</td>
-                <td>${o.total_amount ? `${o.currency || '¥'}${Number(o.total_amount).toLocaleString()}` : '-'}</td>
+                <td style="font-weight:500;color:var(--gray-900)">${escapeHtml(o.order_no || '-')}</td>
+                <td>${escapeHtml(o.supplier_name || '-')}</td>
+                <td>${o.total_amount ? `${escapeHtml(o.currency || '¥')}${Number(o.total_amount).toLocaleString()}` : '-'}</td>
                 <td>${formatDate(o.delivery_date)}</td>
                 <td>${getStatusBadge(o.status)}</td>
                 <td>${formatDate(o.created_at)}</td>
@@ -135,7 +135,7 @@ async function viewOrderDetail(orderId) {
       <div class="detail-grid">
         <div class="detail-item">
           <span class="detail-label">订单号</span>
-          <span class="detail-value">${o.order_no || '-'}</span>
+          <span class="detail-value">${escapeHtml(o.order_no || '-')}</span>
         </div>
         <div class="detail-item">
           <span class="detail-label">状态</span>
@@ -143,11 +143,11 @@ async function viewOrderDetail(orderId) {
         </div>
         <div class="detail-item">
           <span class="detail-label">供应商</span>
-          <span class="detail-value">${o.supplier_name || '-'}</span>
+          <span class="detail-value">${escapeHtml(o.supplier_name || '-')}</span>
         </div>
         <div class="detail-item">
           <span class="detail-label">订单金额</span>
-          <span class="detail-value">${o.total_amount ? `${o.currency || '¥'}${Number(o.total_amount).toLocaleString()}` : '-'}</span>
+          <span class="detail-value">${o.total_amount ? `${escapeHtml(o.currency || '¥')}${Number(o.total_amount).toLocaleString()}` : '-'}</span>
         </div>
         <div class="detail-item">
           <span class="detail-label">交期</span>
@@ -172,15 +172,15 @@ async function viewOrderDetail(orderId) {
           <div class="detail-grid" style="margin-top:8px;">
             <div class="detail-item full">
               <span class="detail-label">询价标题</span>
-              <span class="detail-value">${inquiry.title || '-'}</span>
+              <span class="detail-value">${escapeHtml(inquiry.title || '-')}</span>
             </div>
             <div class="detail-item">
               <span class="detail-label">品类</span>
-              <span class="detail-value">${inquiry.category || '-'}</span>
+              <span class="detail-value">${escapeHtml(inquiry.category || '-')}</span>
             </div>
             <div class="detail-item">
               <span class="detail-label">数量</span>
-              <span class="detail-value">${inquiry.quantity || '-'} ${inquiry.unit || ''}</span>
+              <span class="detail-value">${escapeHtml(inquiry.quantity || '-')} ${escapeHtml(inquiry.unit || '')}</span>
             </div>
           </div>
         </div>

@@ -121,10 +121,10 @@ function renderAuditPage() {
           ${pageData.length === 0 ? '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--gray-400)">暂无审计记录</td></tr>' : ''}
           ${pageData.map(log => `
             <tr>
-              <td style="font-weight:500;color:var(--gray-900)">${log._operator}</td>
+              <td style="font-weight:500;color:var(--gray-900)">${escapeHtml(log._operator)}</td>
               <td>${getOpTypeBadge(log.action)}</td>
-              <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${log.target_type || ''}">${log.target_type || '-'}</td>
-              <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--gray-500);font-size:13px;" title="${log._detail}">${log._detail || '-'}</td>
+              <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(log.target_type || '')}">${escapeHtml(log.target_type || '-')}</td>
+              <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--gray-500);font-size:13px;" title="${escapeHtml(log._detail)}">${escapeHtml(log._detail || '-')}</td>
               <td style="white-space:nowrap;">${formatDateTime(log.created_at)}</td>
               <td>
                 <button class="btn btn-sm btn-outline" onclick="viewAuditDetail('${log.id}')">详情</button>
@@ -230,11 +230,11 @@ function viewAuditDetail(logId) {
     <div class="detail-grid">
       <div class="detail-item">
         <span class="detail-label">操作人</span>
-        <span class="detail-value">${log._operator}</span>
+        <span class="detail-value">${escapeHtml(log._operator)}</span>
       </div>
       <div class="detail-item">
         <span class="detail-label">操作人ID</span>
-        <span class="detail-value" style="font-family:monospace;font-size:12px;">${log.actor_id || '-'}</span>
+        <span class="detail-value" style="font-family:monospace;font-size:12px;">${escapeHtml(log.actor_id || '-')}</span>
       </div>
       <div class="detail-item">
         <span class="detail-label">操作类型</span>
@@ -242,11 +242,11 @@ function viewAuditDetail(logId) {
       </div>
       <div class="detail-item">
         <span class="detail-label">操作目标</span>
-        <span class="detail-value">${log.target_type || '-'}</span>
+        <span class="detail-value">${escapeHtml(log.target_type || '-')}</span>
       </div>
       <div class="detail-item">
         <span class="detail-label">目标ID</span>
-        <span class="detail-value" style="font-family:monospace;font-size:12px;">${log.target_id || '-'}</span>
+        <span class="detail-value" style="font-family:monospace;font-size:12px;">${escapeHtml(log.target_id || '-')}</span>
       </div>
       <div class="detail-item">
         <span class="detail-label">操作时间</span>
@@ -254,16 +254,16 @@ function viewAuditDetail(logId) {
       </div>
       <div class="detail-item full">
         <span class="detail-label">操作详情</span>
-        <span class="detail-value" style="font-size:13px;line-height:1.6;">${log._detail || '无详细信息'}</span>
+        <span class="detail-value" style="font-size:13px;line-height:1.6;">${escapeHtml(log._detail || '无详细信息')}</span>
       </div>
       ${details.before || details.after ? `
         <div class="detail-item full">
           <span class="detail-label">变更前</span>
-          <pre style="background:var(--gray-50);padding:12px;border-radius:var(--radius);font-size:12px;overflow-x:auto;max-height:200px;border:1px solid var(--gray-200);">${beforeDataStr}</pre>
+          <pre style="background:var(--gray-50);padding:12px;border-radius:var(--radius);font-size:12px;overflow-x:auto;max-height:200px;border:1px solid var(--gray-200);">${escapeHtml(beforeDataStr)}</pre>
         </div>
         <div class="detail-item full">
           <span class="detail-label">变更后</span>
-          <pre style="background:var(--primary-bg);padding:12px;border-radius:var(--radius);font-size:12px;overflow-x:auto;max-height:200px;border:1px solid var(--gray-200);">${afterDataStr}</pre>
+          <pre style="background:var(--primary-bg);padding:12px;border-radius:var(--radius);font-size:12px;overflow-x:auto;max-height:200px;border:1px solid var(--gray-200);">${escapeHtml(afterDataStr)}</pre>
         </div>
       ` : ''}
     </div>

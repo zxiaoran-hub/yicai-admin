@@ -259,8 +259,8 @@ async function viewSupplierDetail(authId) {
               ${quotes.map(q => `
                 <tr>
                   <td>${q.inquiry_id ? q.inquiry_id.substring(0, 8) + '...' : '-'}</td>
-                  <td>${q.price || '-'} ${q.currency || ''}</td>
-                  <td>${q.moq || '-'}</td>
+                  <td>${escapeHtml(q.price || '-')} ${escapeHtml(q.currency || '')}</td>
+                  <td>${escapeHtml(q.moq || '-')}</td>
                   <td>${q.lead_time || '-'}</td>
                   <td>${getStatusBadge(q.status)}</td>
                   <td>${formatDate(q.created_at)}</td>

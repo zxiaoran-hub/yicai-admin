@@ -82,7 +82,7 @@ async function renderCompanies() {
             ${pageData.length === 0 ? '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--gray-400)">暂无公司数据，点击「新建公司」创建</td></tr>' : ''}
             ${pageData.map(c => `
               <tr>
-                <td style="font-weight:500;color:var(--gray-900)">${escapeHtml(c.name || '-'}</td>
+                <td style="font-weight:500;color:var(--gray-900)">${escapeHtml(c.name || '-')}</td>
                 <td>${typeBadge(c.type || c.company_type)}</td>
                 <td>${statusBadge(c.status)}</td>
                 <td>${formatDate(c.created_at)}</td>
@@ -251,7 +251,7 @@ function openEditCompany(companyId) {
   const content = `
     <div class="form-group">
       <label>公司名称 <span style="color:var(--danger)">*</span></label>
-      <input type="text" id="company-name" value="${company.name || ''}" maxlength="100">
+      <input type="text" id="company-name" value="${escapeHtml(company.name || '')}" maxlength="100">
     </div>
     <div class="form-group">
       <label>公司类型</label>
@@ -275,7 +275,7 @@ function openEditCompany(companyId) {
     </div>
     <div class="form-group">
       <label>备注</label>
-      <textarea id="company-remark" rows="3">${company.remark || ''}</textarea>
+      <textarea id="company-remark" rows="3">${escapeHtml(company.remark || '')}</textarea>
     </div>
   `;
 
@@ -325,7 +325,7 @@ function openCreateCompanyAdmin(companyId) {
   const typeName = company.type === 'supplier' ? '供应商' : '品牌方';
   const content = `
     <div style="margin-bottom:16px;padding:12px;background:var(--gray-50);border-radius:8px;">
-      <div style="font-weight:500;color:var(--gray-700);">为「${company.name}」创建${typeName}公司管理员</div>
+      <div style="font-weight:500;color:var(--gray-700);">为「${escapeHtml(company.name)}」创建${typeName}公司管理员</div>
       <div style="font-size:12px;color:var(--gray-500);margin-top:4px;">管理员将拥有本公司角色管理和员工管理权限</div>
     </div>
     <div class="form-group">
