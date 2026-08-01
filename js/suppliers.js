@@ -8,10 +8,18 @@ async function renderSuppliers() {
   body.innerHTML = '<div class="loading-spinner"><div class="spinner"></div>加载中...</div>';
 
   try {
-    const allSuppliers = await supabase.query('suppliers', {
+    const allSuppliersRaw = await supabase.query('suppliers', {
       select: '*',
       order: 'created_at.desc'
     });
+
+    // 映射数据库字段到UI字段名（兼容历史代码）
+    const allSuppliers = (allSuppliersRaw || []).map(s => ({
+      ...s,
+      auth_id: s.user_id || s.auth_id,
+      verification_status: s.is_verified === true ? 'verified' : (s.is_verified === false ? 'pending' : 'pending'),
+      industry: Array.isArray(s.category) ? s.category.join('、') : (s.category || s.industry || '')
+    }));
 
     // 获取所有行业
     const industries = [...new Set(allSuppliers.map(s => s.industry).filter(Boolean))];
@@ -161,7 +169,7 @@ async function toggleFeatured(authId, setFeatured) {
           featured_at: setFeatured ? new Date().toISOString() : null,
           updated_at: new Date().toISOString()
         };
-        await supabase.update('suppliers', updateData, { auth_id: authId });
+        await supabase.update('suppliers', updateData, { user_id: authId });
         showToast(`${action}成功`);
         renderSuppliers();
       } catch (err) {
@@ -180,10 +188,17 @@ async function viewSupplierDetail(authId) {
   try {
     const suppliers = await supabase.query('suppliers', {
       select: '*',
-      filter: { auth_id: authId }
+      filter: { user_id: authId }
     });
     if (!suppliers.length) return showToast('供应商不存在', true);
-    const s = suppliers[0];
+    const raw = suppliers[0];
+    // 映射字段名以兼容UI
+    const s = {
+      ...raw,
+      verification_status: raw.is_verified === true ? 'verified' : 'pending',
+      industry: Array.isArray(raw.category) ? raw.category.join('、') : (raw.category || raw.industry || ''),
+      auth_id: raw.user_id || raw.auth_id
+    };
 
     // 获取该供应商的报价历史
     let quotes = [];
@@ -300,7 +315,7 @@ async function verifySupplier(authId, status) {
           verified_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
-        await supabase.update('suppliers', updateData, { auth_id: authId });
+        await supabase.update('suppliers', updateData, { user_id: authId });
         showToast(`${action}成功`);
         renderSuppliers();
       } catch (err) {

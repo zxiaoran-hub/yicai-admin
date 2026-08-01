@@ -12,7 +12,7 @@ async function renderDashboard() {
       quotes,
       orders
     ] = await Promise.all([
-      supabase.query('suppliers', { select: 'verification_status,created_at' }),
+      supabase.query('suppliers', { select: 'is_verified,created_at' }),
       supabase.query('buyers', { select: 'created_at' }),
       supabase.query('inquiries', { select: 'status,created_at' }),
       supabase.query('inquiry_quotes', { select: 'id,created_at' }),
@@ -33,10 +33,10 @@ async function renderDashboard() {
     const newBuyers = buyers.filter(b => b.created_at >= monthStart).length;
     const newUsers = newSuppliers + newBuyers;
 
-    // 供应商状态分布
-    const verifiedCount = suppliers.filter(s => s.verification_status === 'verified').length;
-    const pendingCount = suppliers.filter(s => s.verification_status === 'pending').length;
-    const rejectedCount = suppliers.filter(s => s.verification_status === 'rejected').length;
+    // 供应商状态分布（使用 is_verified 布尔字段）
+    const verifiedCount = suppliers.filter(s => s.is_verified === true).length;
+    const pendingCount = suppliers.filter(s => s.is_verified !== true).length;
+    const rejectedCount = 0; // is_verified 为布尔值，暂无 rejected 状态
 
     // 询价状态分布
     const activeCount = inquiries.filter(i => i.status === 'active').length;
