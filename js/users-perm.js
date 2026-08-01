@@ -280,6 +280,7 @@ async function saveCreateUser() {
   const expires = document.getElementById('new-user-expires').value;
 
   if (!email) return showToast('请输入用户邮箱', true);
+  if (!isValidEmail(email)) return showToast('邮箱格式不正确', true);
   if (!password || password.length < 6) return showToast('密码至少6位', true);
   if (!roleId) return showToast('请选择角色', true);
 
@@ -288,46 +289,112 @@ async function saveCreateUser() {
   btn.textContent = '创建中...';
 
   try {
-    // 1. 调用 Supabase Auth signUp 创建认证账号
-    const signUpUrl = `${supabase.url}/auth/v1/signup`;
-    const signUpResp = await fetch(signUpUrl, {
-      method: 'POST',
-      headers: {
-        'apikey': supabase.key,
-        'Authorization': `Bearer ${supabase.key}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        email,
-        password,
-        data: name ? { name, full_name: name } : {}
-      })
-    });
+    // 1. 创建认证账号（支持"用户已存在"自动关联）
+    let userId = null;
+    let isNewAccount = true;
 
-    if (!signUpResp.ok) {
-      const errData = await signUpResp.json().catch(() => ({}));
-      throw new Error(errData.error_description || errData.msg || `创建账号失败(${signUpResp.status})`);
+    try {
+      const signUpUrl = `${supabase.url}/auth/v1/signup`;
+      const signUpResp = await fetch(signUpUrl, {
+        method: 'POST',
+        headers: {
+          'apikey': supabase.key,
+          'Authorization': `Bearer ${supabase.key}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          data: name ? { name, full_name: name } : {}
+        })
+      });
+
+      if (!signUpResp.ok) {
+        const errData = await signUpResp.json().catch(() => ({}));
+        const errMsg = errData.error_description || errData.msg || '';
+        // 用户已存在 → 查找已有用户ID并关联
+        if (errMsg.includes('already registered') || signUpResp.status === 400) {
+          isNewAccount = false;
+          try {
+            userId = await supabase.rpc('get_user_id_by_email', { p_email: email });
+          } catch (e) {
+            console.warn('RPC lookup failed:', e.message);
+          }
+          if (!userId) {
+            throw new Error('该邮箱已注册，但无法查找用户ID。请尝试使用「分配角色」功能。');
+          }
+        } else {
+          throw new Error(errMsg || `创建账号失败(${signUpResp.status})`);
+        }
+      } else {
+        const signUpResult = await signUpResp.json();
+        userId = signUpResult.user?.id || null;
+        if (!userId) {
+          // 返回成功但没有 user.id，尝试查找
+          isNewAccount = false;
+          try {
+            userId = await supabase.rpc('get_user_id_by_email', { p_email: email });
+          } catch (e) {
+            console.warn('RPC lookup failed:', e.message);
+          }
+        }
+      }
+    } catch (signUpErr) {
+      if (signUpErr.message && signUpErr.message.includes('无法查找用户ID')) {
+        throw signUpErr;
+      }
+      // 其他 signUp 错误，尝试 fallback
+      console.warn('signUp error, trying fallback:', signUpErr.message);
+      try {
+        userId = await supabase.rpc('get_user_id_by_email', { p_email: email });
+        if (userId) isNewAccount = false;
+      } catch (e) {
+        throw new Error('创建账号失败: ' + signUpErr.message);
+      }
     }
 
-    const signUpResult = await signUpResp.json();
-    const userId = signUpResult.user?.id || '';
+    if (!userId) {
+      throw new Error('无法获取用户ID，请重试');
+    }
 
-    // 2. 在 user_roles 表中创建关联记录
+    // 2. 检查是否已有该用户的角色关联
+    const existingRoles = await supabase.query('user_roles', {
+      select: 'id',
+      filter: { user_id: userId }
+    });
+
+    // 3. 在 user_roles 表中创建关联记录
     const userRoleData = {
-      user_id: userId || email,
+      user_id: userId,
       user_email: email,
       role_id: roleId,
       company_id: companyId || null,
       expires_at: expires ? new Date(expires).toISOString() : null
     };
-    await dbInsert('user_roles', userRoleData);
 
-    // 3. 记录审计日志
-    const role = rolesData.find(r => r.id === roleId);
-    await writeAuditLog('user:assign_role', `用户：${email}`, `创建用户「${email}」并分配角色「${role ? role.name : roleId}」`, userId || email);
+    try {
+      await supabase.insert('user_roles', userRoleData);
+    } catch (insertErr) {
+      // 如果是唯一约束冲突（用户已有相同角色），提示而非报错
+      if (insertErr.message && (insertErr.message.includes('duplicate') || insertErr.message.includes('unique'))) {
+        throw new Error('该用户已有角色关联记录，请使用「编辑」功能修改');
+      }
+      throw insertErr;
+    }
+
+    // 4. 记录审计日志
+    try {
+      const allRoles = await supabase.query('roles', { select: 'id,name', order: 'name.asc' });
+      const role = (allRoles || []).find(r => r.id === roleId);
+      const action = isNewAccount ? '创建用户并分配角色' : '为已有用户分配角色';
+      await writeAuditLog('user:assign_role', `用户：${email}`, `${action}「${email}」→「${role ? role.name : roleId}」`, userId);
+    } catch (e) {
+      console.warn('Audit log failed:', e.message);
+    }
 
     closeModal();
-    showToast('用户创建成功！' + (signUpResult.user?.confirmation_sent_at ? '（需要邮箱验证）' : ''));
+    const msg = isNewAccount ? '用户创建成功！' : '已为用户分配角色！';
+    showToast(msg);
     renderUsersPerm();
   } catch (err) {
     showToast('创建失败: ' + err.message, true);
