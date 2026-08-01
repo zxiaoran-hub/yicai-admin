@@ -8,28 +8,50 @@ async function renderUsersPerm() {
   body.innerHTML = '<div class="loading-spinner"><div class="spinner"></div>加载中...</div>';
 
   try {
-    // 尝试带 join 的查询，获取角色名和公司信息
-    let userRoles = await supabase.query('user_roles', {
-      select: '*,roles(name,data_scope),companies(name)',
-      order: 'granted_at.desc'
+    // 优先使用全量用户视图（包含所有注册用户，即使没有分配角色）
+    let userRoles = await supabase.query('all_users_with_roles', {
+      select: '*',
+      order: 'auth_created_at.desc'
     });
 
-    // 如果 join 查询失败，回退到简单查询
-    if (!userRoles || userRoles.length === 0) {
-      const simpleRoles = await supabase.query('user_roles', {
-        select: '*',
+    // 如果视图查询失败（视图可能未创建），回退到原来的 user_roles 查询
+    if (!userRoles || userRoles.error) {
+      console.warn('all_users_with_roles 视图不可用，回退到 user_roles 查询');
+      let fallbackRoles = await supabase.query('user_roles', {
+        select: '*,roles(name,data_scope),companies(name)',
         order: 'granted_at.desc'
       });
-      userRoles = simpleRoles || [];
+      if (!fallbackRoles || fallbackRoles.length === 0) {
+        fallbackRoles = await supabase.query('user_roles', {
+          select: '*',
+          order: 'granted_at.desc'
+        });
+        fallbackRoles = fallbackRoles || [];
+      }
+      userRoles = (fallbackRoles || []).map(ur => ({
+        user_id: ur.user_id,
+        user_email: ur.user_email || '',
+        user_role_id: ur.id,
+        role_id: ur.role_id,
+        role_name: ur.roles?.name || '',
+        data_scope: ur.roles?.data_scope || '',
+        company_id: ur.company_id,
+        company_name: ur.companies?.name || '',
+        granted_at: ur.granted_at,
+        expires_at: ur.expires_at,
+        has_role: true,
+        auth_created_at: ur.granted_at
+      }));
     }
 
     // 确保每条记录都有展示所需的字段
     usersPermData = (userRoles || []).map(ur => ({
       ...ur,
-      _role_name: ur.roles?.name || ur.role_name || ur.role_id || '',
-      _data_scope: ur.roles?.data_scope || ur.data_scope || '',
-      _company_name: ur.companies?.name || ur.company_name || ur.company_id || '',
-      _user_email: ur.user_email || ur.user_id || ''
+      _role_name: ur.role_name || '',
+      _data_scope: ur.data_scope || '',
+      _company_name: ur.company_name || '',
+      _user_email: ur.user_email || ur.user_id || '',
+      _has_role: ur.has_role
     }));
 
     const totalPages = Math.ceil(usersPermData.length / usersPermPageSize) || 1;
@@ -61,31 +83,8 @@ async function renderUsersPerm() {
             </tr>
           </thead>
           <tbody>
-            ${pageData.length === 0 ? '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--gray-400)">暂无用户权限记录</td></tr>' : ''}
-            ${pageData.map(u => {
-              const isExpired = u.expires_at && new Date(u.expires_at) < new Date();
-              const statusBadge = isExpired
-                ? '<span class="badge badge-gray">已过期</span>'
-                : '<span class="badge badge-success">生效中</span>';
-              const expiryDisplay = u.expires_at ? formatDate(u.expires_at) : '永久';
-              const roleDisplay = u._role_name || '-';
-              const scopeDisplay = SCOPE_MAP[u._data_scope] || u._data_scope || '-';
-              return `
-                <tr>
-                  <td style="font-weight:500;color:var(--gray-900)">${escapeHtml(u._user_email || '-')}</td>
-                  <td><span class="badge badge-primary">${escapeHtml(roleDisplay)}</span></td>
-                  <td>${escapeHtml(u._company_name || '-')}</td>
-                  <td><span class="badge badge-info">${escapeHtml(scopeDisplay)}</span></td>
-                  <td>${expiryDisplay}</td>
-                  <td>${statusBadge}</td>
-                  <td>
-                    <button class="btn btn-sm btn-outline" onclick="viewUserPerms('${escapeHtml(u._user_email || u.user_id)}')">权限</button>
-                    <button class="btn btn-sm btn-outline" onclick="editUserRole('${u.id}')">编辑</button>
-                    <button class="btn btn-sm btn-danger" onclick="removeUserRole('${u.id}','${(u._user_email || u.user_id || '').replace(/'/g, "\\'")}')">移除</button>
-                  </td>
-                </tr>
-              `;
-            }).join('')}
+            ${pageData.length === 0 ? '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--gray-400)">暂无用户记录</td></tr>' : ''}
+            ${pageData.map(renderUserRow).join('')}
           </tbody>
         </table>
         <div id="users-perm-pagination"></div>
@@ -108,6 +107,37 @@ window.usersPermGoToPage = function(page) {
   usersPermPage = page;
   renderUsersPerm();
 };
+
+// 公共行渲染函数（主渲染和搜索过滤共用）
+function renderUserRow(u) {
+  let statusBadge;
+  if (!u._has_role) {
+    statusBadge = '<span class="badge badge-gray">未分配角色</span>';
+  } else if (u.expires_at && new Date(u.expires_at) < new Date()) {
+    statusBadge = '<span class="badge badge-gray">已过期</span>';
+  } else {
+    statusBadge = '<span class="badge badge-success">生效中</span>';
+  }
+  const expiryDisplay = !u._has_role ? '-' : (u.expires_at ? formatDate(u.expires_at) : '永久');
+  const roleDisplay = u._has_role ? (u._role_name || '-') : '-';
+  const scopeDisplay = u._has_role ? (SCOPE_MAP[u._data_scope] || u._data_scope || '-') : '-';
+  const actionButtons = u._has_role
+    ? `<button class="btn btn-sm btn-outline" onclick="viewUserPerms('${escapeHtml(u._user_email || u.user_id)}')">权限</button>
+       <button class="btn btn-sm btn-outline" onclick="editUserRole('${u.user_role_id || u.id}')">编辑</button>
+       <button class="btn btn-sm btn-danger" onclick="removeUserRole('${u.user_role_id || u.id}','${(u._user_email || u.user_id || '').replace(/'/g, "\\'")}')">移除</button>`
+    : `<button class="btn btn-sm btn-primary" onclick="assignRoleToUser('${escapeHtml(u.user_id)}','${escapeHtml(u._user_email)}')">分配角色</button>`;
+  return `
+    <tr>
+      <td style="font-weight:500;color:var(--gray-900)">${escapeHtml(u._user_email || '-')}</td>
+      <td><span class="badge badge-primary">${escapeHtml(roleDisplay)}</span></td>
+      <td>${escapeHtml(u._company_name || '-')}</td>
+      <td><span class="badge badge-info">${escapeHtml(scopeDisplay)}</span></td>
+      <td>${expiryDisplay}</td>
+      <td>${statusBadge}</td>
+      <td>${actionButtons}</td>
+    </tr>
+  `;
+}
 
 let usersPermCompanyFilter = '';
 
@@ -144,30 +174,7 @@ function renderUsersPermFiltered() {
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--gray-400)">未找到匹配的用户</td></tr>';
     return;
   }
-  tbody.innerHTML = filtered.slice(0, usersPermPageSize).map(u => {
-    const isExpired = u.expires_at && new Date(u.expires_at) < new Date();
-    const statusBadge = isExpired
-      ? '<span class="badge badge-gray">已过期</span>'
-      : '<span class="badge badge-success">生效中</span>';
-    const expiryDisplay = u.expires_at ? formatDate(u.expires_at) : '永久';
-    const roleDisplay = u._role_name || '-';
-    const scopeDisplay = SCOPE_MAP[u._data_scope] || u._data_scope || '-';
-    return `
-      <tr>
-        <td style="font-weight:500;color:var(--gray-900)">${escapeHtml(u._user_email || '-')}</td>
-        <td><span class="badge badge-primary">${escapeHtml(roleDisplay)}</span></td>
-        <td>${escapeHtml(u._company_name || '-')}</td>
-        <td><span class="badge badge-info">${escapeHtml(scopeDisplay)}</span></td>
-        <td>${expiryDisplay}</td>
-        <td>${statusBadge}</td>
-        <td>
-          <button class="btn btn-sm btn-outline" onclick="viewUserPerms('${escapeHtml(u._user_email || u.user_id)}')">权限</button>
-          <button class="btn btn-sm btn-outline" onclick="editUserRole('${u.id}')">编辑</button>
-          <button class="btn btn-sm btn-danger" onclick="removeUserRole('${u.id}','${(u._user_email || u.user_id || '').replace(/'/g, "\\'")}')">移除</button>
-        </td>
-      </tr>
-    `;
-  }).join('');
+  tbody.innerHTML = filtered.slice(0, usersPermPageSize).map(renderUserRow).join('');
 }
 
 let usersPermSearchTimer;
@@ -186,30 +193,7 @@ function filterUsersPerm(val) {
       tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--gray-400)">未找到匹配的用户</td></tr>';
       return;
     }
-    tbody.innerHTML = filtered.slice(0, usersPermPageSize).map(u => {
-      const isExpired = u.expires_at && new Date(u.expires_at) < new Date();
-      const statusBadge = isExpired
-        ? '<span class="badge badge-gray">已过期</span>'
-        : '<span class="badge badge-success">生效中</span>';
-      const expiryDisplay = u.expires_at ? formatDate(u.expires_at) : '永久';
-      const roleDisplay = u._role_name || '-';
-      const scopeDisplay = SCOPE_MAP[u._data_scope] || u._data_scope || '-';
-      return `
-        <tr>
-          <td style="font-weight:500;color:var(--gray-900)">${escapeHtml(u._user_email || '-')}</td>
-          <td><span class="badge badge-primary">${escapeHtml(roleDisplay)}</span></td>
-          <td>${escapeHtml(u._company_name || '-')}</td>
-          <td><span class="badge badge-info">${escapeHtml(scopeDisplay)}</span></td>
-          <td>${expiryDisplay}</td>
-          <td>${statusBadge}</td>
-          <td>
-            <button class="btn btn-sm btn-outline" onclick="viewUserPerms('${escapeHtml(u._user_email || u.user_id)}')">权限</button>
-            <button class="btn btn-sm btn-outline" onclick="editUserRole('${u.id}')">编辑</button>
-            <button class="btn btn-sm btn-danger" onclick="removeUserRole('${u.id}','${(u._user_email || u.user_id || '').replace(/'/g, "\\'")}')">移除</button>
-          </td>
-        </tr>
-      `;
-    }).join('');
+    tbody.innerHTML = filtered.slice(0, usersPermPageSize).map(renderUserRow).join('');
   }, 300);
 }
 
@@ -496,12 +480,60 @@ async function saveAssignRole() {
   }
 }
 
+// ========== 为指定用户分配角色（从用户列表直接点击） ==========
+window.assignRoleToUser = async function(userId, userEmail) {
+  // 加载公司和角色选项
+  const [companies, roles] = await Promise.all([
+    supabase.query('companies', { select: 'id,name', order: 'name.asc' }),
+    supabase.query('roles', { select: 'id,name,data_scope', order: 'name.asc' })
+  ]);
+
+  const companyOptions = (companies || []).map(c =>
+    `<option value="${c.id}">${escapeHtml(c.name || c.id)}</option>`
+  ).join('');
+
+  const roleOptions = (roles || []).map(r =>
+    `<option value="${r.id}">${escapeHtml(r.name)} (${SCOPE_MAP[r.data_scope] || r.data_scope})</option>`
+  ).join('');
+
+  const content = `
+    <div class="form-group">
+      <label>用户邮箱</label>
+      <input type="email" id="assign-user-email" value="${escapeHtml(userEmail)}" readonly style="background:var(--gray-50)">
+    </div>
+    <div class="form-group">
+      <label>选择角色 <span style="color:var(--danger)">*</span></label>
+      <select id="assign-role-id">
+        <option value="">请选择角色</option>
+        ${roleOptions}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>所属公司</label>
+      <select id="assign-company-id">
+        <option value="">请选择公司</option>
+        ${companyOptions}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>有效期（留空表示永久）</label>
+      <input type="datetime-local" id="assign-expires">
+    </div>
+  `;
+
+  const footer = `
+    <button class="btn btn-outline" onclick="closeModal()">取消</button>
+    <button class="btn btn-primary" onclick="saveAssignRole()">确认分配</button>
+  `;
+
+  showModal('为用户分配角色', content, footer);
+};
+
 // ========== 编辑用户角色 ==========
 async function editUserRole(recordId) {
   console.log('[editUserRole] called with:', recordId, typeof recordId);
-  console.log('[editUserRole] usersPermData ids:', usersPermData.map(u => ({ id: u.id, type: typeof u.id })));
-  // 先从内存查找，找不到则从数据库查询
-  let record = usersPermData.find(u => String(u.id) === String(recordId));
+  // 先从内存查找（兼容 user_role_id 和 id 两种字段名），找不到则从数据库查询
+  let record = usersPermData.find(u => String(u.user_role_id || u.id) === String(recordId));
   console.log('[editUserRole] found in memory:', !!record);
   if (!record) {
     const rows = await supabase.query('user_roles', {
