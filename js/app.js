@@ -187,6 +187,10 @@ function showApp() {
             <span class="nav-icon">🛒</span>
             <span>采购方管理</span>
           </div>
+          <div class="nav-item" data-page="companies" onclick="navigateTo('companies')">
+            <span class="nav-icon">🏢</span>
+            <span>公司管理</span>
+          </div>
           <div class="nav-item" data-page="inquiries" onclick="navigateTo('inquiries')">
             <span class="nav-icon">📋</span>
             <span>询价管理</span>
@@ -203,10 +207,6 @@ function showApp() {
           <div class="nav-item" data-page="users-perm" onclick="navigateTo('users-perm')">
             <span class="nav-icon">👤</span>
             <span>用户权限</span>
-          </div>
-          <div class="nav-item" data-page="companies" onclick="navigateTo('companies')">
-            <span class="nav-icon">🏢</span>
-            <span>公司管理</span>
           </div>
           <div class="nav-item" data-page="audit" onclick="navigateTo('audit')">
             <span class="nav-icon">📜</span>

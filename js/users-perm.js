@@ -41,6 +41,9 @@ async function renderUsersPerm() {
       <div class="table-container">
         <div class="table-toolbar">
           <input class="search-input" type="text" placeholder="搜索用户邮箱..." oninput="filterUsersPerm(this.value)">
+          <select onchange="filterUsersPermCompany(this.value)" id="users-perm-company-filter">
+            <option value="">全部公司</option>
+          </select>
           <button class="btn btn-primary btn-sm" onclick="openCreateUser()">+ 新增用户</button>
           <button class="btn btn-sm btn-outline" onclick="openAssignRole()" style="margin-left:4px;">分配角色</button>
           <span style="margin-left:auto;font-size:13px;color:var(--gray-500);">共 ${usersPermData.length} 条记录</span>
@@ -95,6 +98,7 @@ async function renderUsersPerm() {
       totalPages,
       'usersPermGoToPage'
     );
+    populateCompanyFilter();
   } catch (err) {
     body.innerHTML = `<div class="empty-state"><div class="empty-icon">👤</div><p>加载用户权限数据失败：${err.message}</p></div>`;
   }
@@ -104,6 +108,67 @@ window.usersPermGoToPage = function(page) {
   usersPermPage = page;
   renderUsersPerm();
 };
+
+let usersPermCompanyFilter = '';
+
+async function populateCompanyFilter() {
+  try {
+    const companies = await supabase.query('companies', { select: 'id,name', order: 'name.asc' });
+    const select = document.getElementById('users-perm-company-filter');
+    if (!select) return;
+    const current = select.value;
+    select.innerHTML = '<option value="">全部公司</option>' +
+      (companies || []).map(c => `<option value="${c.id}">${escapeHtml(c.name || '-')}</option>`).join('');
+    if (current) select.value = current;
+  } catch (e) { /* ignore */ }
+}
+
+function filterUsersPermCompany(val) {
+  usersPermCompanyFilter = val;
+  usersPermPage = 1;
+  renderUsersPermFiltered();
+}
+
+function renderUsersPermFiltered() {
+  const q = (document.querySelector('.search-input')?.value || '').toLowerCase();
+  const filtered = usersPermData.filter(u => {
+    const matchSearch = !q || (u._user_email || '').toLowerCase().includes(q) ||
+      (u._role_name || '').toLowerCase().includes(q) ||
+      (u._company_name || '').toLowerCase().includes(q);
+    const matchCompany = !usersPermCompanyFilter || String(u.company_id) === String(usersPermCompanyFilter);
+    return matchSearch && matchCompany;
+  });
+  const tbody = document.querySelector('.table-container tbody');
+  if (!tbody) return;
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--gray-400)">未找到匹配的用户</td></tr>';
+    return;
+  }
+  tbody.innerHTML = filtered.slice(0, usersPermPageSize).map(u => {
+    const isExpired = u.expires_at && new Date(u.expires_at) < new Date();
+    const statusBadge = isExpired
+      ? '<span class="badge badge-gray">已过期</span>'
+      : '<span class="badge badge-success">生效中</span>';
+    const expiryDisplay = u.expires_at ? formatDate(u.expires_at) : '永久';
+    const roleDisplay = u._role_name || '-';
+    const scopeDisplay = SCOPE_MAP[u._data_scope] || u._data_scope || '-';
+    return `
+      <tr>
+        <td style="font-weight:500;color:var(--gray-900)">${escapeHtml(u._user_email || '-')}</td>
+        <td><span class="badge badge-primary">${escapeHtml(roleDisplay)}</span></td>
+        <td>${escapeHtml(u._company_name || '-')}</td>
+        <td><span class="badge badge-info">${escapeHtml(scopeDisplay)}</span></td>
+        <td>${expiryDisplay}</td>
+        <td>${statusBadge}</td>
+        <td>
+          <button class="btn btn-sm btn-outline" onclick="viewUserPerms('${escapeHtml(u._user_email || u.user_id)}')">权限</button>
+          <button class="btn btn-sm btn-outline" onclick="editUserRole('${u.id}')">编辑</button>
+          <button class="btn btn-sm btn-danger" onclick="removeUserRole('${u.id}','${(u._user_email || u.user_id || '').replace(/'/g, "\\'")}')">移除</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
 
 let usersPermSearchTimer;
 function filterUsersPerm(val) {

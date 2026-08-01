@@ -63,6 +63,7 @@ async function renderSuppliers() {
             <option value="no" ${suppliersFilter.featured === 'no' ? 'selected' : ''}>非精选</option>
           </select>
           <span style="margin-left:auto;font-size:13px;color:var(--gray-500);">共 ${filtered.length} 条</span>
+          <button class="btn btn-outline" onclick="openBatchImport()">📥 批量导入</button>
           <button class="btn btn-primary" onclick="showAddSupplierForm()">+ 新增供应商</button>
         </div>
         <table>
@@ -501,4 +502,301 @@ async function handleAddSupplier(event) {
     console.error('[AddSupplier] Error:', err);
     showToast('创建失败：' + (err.message || '请稍后重试'));
   }
+}
+
+// ==================== 批量导入供应商 ====================
+let batchImportData = [];
+
+function openBatchImport() {
+  const content = `
+    <div id="batch-import-step1">
+      <div style="margin-bottom:16px;padding:16px;background:var(--primary-bg);border-radius:8px;border:1px solid var(--primary-light);">
+        <div style="font-weight:500;color:var(--primary);margin-bottom:8px;">📥 Excel批量导入供应商</div>
+        <div style="font-size:13px;color:var(--gray-600);line-height:1.6;">
+          请上传Excel文件（.xlsx/.xls），必须包含以下列：<br>
+          <strong>必填：</strong>公司名称、联系人、邮箱、行业<br>
+          <strong>选填：</strong>联系电话、地区、公司简介、简称<br>
+          <br>
+          系统会自动为每个供应商创建登录账号（默认密码：yicai123）
+        </div>
+      </div>
+      <div style="text-align:center;padding:24px 0;">
+        <div style="border:2px dashed var(--gray-300);border-radius:12px;padding:40px 20px;cursor:pointer;transition:all 0.2s;" id="drop-zone" onclick="document.getElementById('batch-excel-file').click()" ondragover="event.preventDefault();this.style.borderColor='var(--primary)';this.style.background='var(--primary-bg)'" ondragleave="this.style.borderColor='var(--gray-300)';this.style.background=''" ondrop="event.preventDefault();this.style.borderColor='var(--gray-300)';this.style.background='';handleExcelFile(event.dataTransfer.files[0])">
+          <div style="font-size:48px;margin-bottom:12px;">📄</div>
+          <div style="color:var(--gray-600);margin-bottom:8px;">点击选择或拖拽Excel文件到此处</div>
+          <div style="font-size:12px;color:var(--gray-400);">支持 .xlsx / .xls 格式</div>
+        </div>
+        <input type="file" id="batch-excel-file" accept=".xlsx,.xls" style="display:none" onchange="handleExcelFile(this.files[0])">
+      </div>
+      <div style="text-align:center;">
+        <button class="btn btn-outline btn-sm" onclick="downloadImportTemplate()">📋 下载导入模板</button>
+      </div>
+    </div>
+    <div id="batch-import-step2" style="display:none;">
+      <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-weight:500;color:var(--gray-800);">数据预览 <span id="batch-import-count" style="color:var(--primary);"></span></div>
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('batch-import-step2').style.display='none';document.getElementById('batch-import-step1').style.display='';">重新选择</button>
+      </div>
+      <div style="max-height:320px;overflow:auto;border:1px solid var(--gray-200);border-radius:8px;">
+        <table style="width:100%;font-size:12px;">
+          <thead style="position:sticky;top:0;background:var(--gray-50);z-index:1;">
+            <tr>
+              <th style="padding:8px;text-align:left;border-bottom:1px solid var(--gray-200);">#</th>
+              <th style="padding:8px;text-align:left;border-bottom:1px solid var(--gray-200);">公司名称</th>
+              <th style="padding:8px;text-align:left;border-bottom:1px solid var(--gray-200);">联系人</th>
+              <th style="padding:8px;text-align:left;border-bottom:1px solid var(--gray-200);">邮箱</th>
+              <th style="padding:8px;text-align:left;border-bottom:1px solid var(--gray-200);">行业</th>
+              <th style="padding:8px;text-align:left;border-bottom:1px solid var(--gray-200);">状态</th>
+            </tr>
+          </thead>
+          <tbody id="batch-import-preview-body"></tbody>
+        </table>
+      </div>
+      <div id="batch-import-errors" style="display:none;margin-top:12px;padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#991b1b;font-size:13px;"></div>
+    </div>
+  `;
+
+  const footer = `
+    <button class="btn btn-outline" onclick="closeModal()">取消</button>
+    <button class="btn btn-primary" id="batch-import-btn" onclick="executeBatchImport()" style="display:none;">确认导入</button>
+  `;
+
+  showModal('批量导入供应商', content, footer);
+}
+
+function handleExcelFile(file) {
+  if (!file) return;
+  
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['xlsx', 'xls'].includes(ext)) {
+    showToast('请选择 .xlsx 或 .xls 格式的文件', true);
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+      if (!jsonData.length) {
+        showToast('Excel文件为空', true);
+        return;
+      }
+
+      // Map columns (support Chinese and English headers)
+      const columnMap = {
+        '公司名称': ['公司名称', 'company_name', '公司名', 'name'],
+        '简称': ['简称', 'short_name'],
+        '联系人': ['联系人', 'contact_name', '联系人姓名'],
+        '联系电话': ['联系电话', 'contact_phone', '电话', 'phone', '手机'],
+        '邮箱': ['邮箱', 'contact_email', 'email', '联系邮箱'],
+        '行业': ['行业', 'industry', '类目', 'category'],
+        '地区': ['地区', 'region', '所在地区', '地址'],
+        '公司简介': ['公司简介', 'description', '描述', '简介']
+      };
+
+      // Detect actual headers
+      const headers = Object.keys(jsonData[0]);
+      const fieldMap = {};
+      for (const [field, aliases] of Object.entries(columnMap)) {
+        for (const alias of aliases) {
+          const found = headers.find(h => h.trim() === alias || h.trim().toLowerCase() === alias.toLowerCase());
+          if (found) {
+            fieldMap[field] = found;
+            break;
+          }
+        }
+      }
+
+      // Validate required fields
+      const required = ['公司名称', '联系人', '邮箱', '行业'];
+      const missing = required.filter(f => !fieldMap[f]);
+      if (missing.length > 0) {
+        showToast(`缺少必填列：${missing.join('、')}。请检查Excel表头。`, true);
+        return;
+      }
+
+      // Parse data
+      batchImportData = jsonData.map((row, idx) => ({
+        _row: idx + 2,
+        _status: 'ready',
+        company_name: String(row[fieldMap['公司名称']] || '').trim(),
+        short_name: String(row[fieldMap['简称']] || '').trim(),
+        contact_name: String(row[fieldMap['联系人']] || '').trim(),
+        contact_phone: String(row[fieldMap['联系电话']] || '').trim(),
+        contact_email: String(row[fieldMap['邮箱']] || '').trim(),
+        industry: String(row[fieldMap['行业']] || '').trim(),
+        region: String(row[fieldMap['地区']] || '').trim(),
+        description: String(row[fieldMap['公司简介']] || '').trim()
+      }));
+
+      // Validate each row
+      const errors = [];
+      batchImportData.forEach((row, idx) => {
+        if (!row.company_name) errors.push(`第${row._row}行：公司名称为空`);
+        if (!row.contact_name) errors.push(`第${row._row}行：联系人为空`);
+        if (!row.contact_email) errors.push(`第${row._row}行：邮箱为空`);
+        else if (!isValidEmail(row.contact_email)) errors.push(`第${row._row}行：邮箱格式错误（${row.contact_email}）`);
+        if (!row.industry) errors.push(`第${row._row}行：行业为空`);
+      });
+
+      // Render preview
+      const tbody = document.getElementById('batch-import-preview-body');
+      tbody.innerHTML = batchImportData.map((row, idx) => {
+        const hasError = errors.some(e => e.startsWith(`第${row._row}行`));
+        const status = hasError ? '<span style="color:#dc2626;">❌ 数据异常</span>' : '<span style="color:#16a34a;">✅ 就绪</span>';
+        return `<tr style="background:${idx % 2 === 0 ? '#fff' : 'var(--gray-50)'};">
+          <td style="padding:6px 8px;border-bottom:1px solid var(--gray-100);color:var(--gray-400);">${row._row}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid var(--gray-100);font-weight:500;">${escapeHtml(row.company_name)}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid var(--gray-100);">${escapeHtml(row.contact_name)}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid var(--gray-100);">${escapeHtml(row.contact_email)}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid var(--gray-100);">${escapeHtml(row.industry)}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid var(--gray-100);">${status}</td>
+        </tr>`;
+      }).join('');
+
+      document.getElementById('batch-import-count').textContent = `（共${batchImportData.length}条）`;
+      document.getElementById('batch-import-step1').style.display = 'none';
+      document.getElementById('batch-import-step2').style.display = '';
+      document.getElementById('batch-import-btn').style.display = '';
+
+      if (errors.length > 0) {
+        const errDiv = document.getElementById('batch-import-errors');
+        errDiv.style.display = '';
+        errDiv.innerHTML = `<strong>发现${errors.length}个问题：</strong><br>` + errors.slice(0, 10).join('<br>') + (errors.length > 10 ? `<br>...还有${errors.length - 10}个问题` : '');
+        document.getElementById('batch-import-btn').disabled = true;
+      } else {
+        document.getElementById('batch-import-btn').disabled = false;
+      }
+
+    } catch (err) {
+      showToast('解析Excel失败：' + err.message, true);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+async function executeBatchImport() {
+  const btn = document.getElementById('batch-import-btn');
+  btn.disabled = true;
+  btn.textContent = '导入中...';
+
+  const validData = batchImportData.filter(row => row.company_name && row.contact_name && row.contact_email && row.industry && isValidEmail(row.contact_email));
+  
+  let success = 0, failed = 0;
+  const failDetails = [];
+
+  for (let i = 0; i < validData.length; i++) {
+    const row = validData[i];
+    btn.textContent = `导入中... (${i + 1}/${validData.length})`;
+    
+    try {
+      // 1. Create auth account
+      let authUserId = null;
+      let isNewAccount = true;
+      const defaultPassword = 'yicai123';
+
+      try {
+        const signUpResult = await supabase.authSignUp(row.contact_email, defaultPassword);
+        if (signUpResult?.user) {
+          authUserId = signUpResult.user.id;
+        }
+      } catch (signUpErr) {
+        if (signUpErr.message && signUpErr.message.includes('already registered')) {
+          isNewAccount = false;
+          // Try to find existing user
+          try {
+            authUserId = await supabase.rpc('get_user_id_by_email', { p_email: row.contact_email });
+          } catch (e) { /* ignore */ }
+          if (!authUserId) {
+            failed++;
+            failDetails.push(`${row.company_name}：用户已存在但无法关联`);
+            continue;
+          }
+        } else {
+          failed++;
+          failDetails.push(`${row.company_name}：${signUpErr.message}`);
+          continue;
+        }
+      }
+
+      if (!authUserId) {
+        failed++;
+        failDetails.push(`${row.company_name}：无法创建账号`);
+        continue;
+      }
+
+      // 2. Create company record
+      const companyResult = await supabase.insert('companies', {
+        name: row.company_name,
+        type: 'supplier',
+        status: 'active',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+      const companyId = companyResult?.[0]?.id;
+
+      if (!companyId) {
+        failed++;
+        failDetails.push(`${row.company_name}：创建公司记录失败`);
+        continue;
+      }
+
+      // 3. Insert supplier record
+      await supabase.insert('suppliers', {
+        user_id: authUserId,
+        company_id: companyId,
+        company_name: row.company_name,
+        short_name: row.short_name || null,
+        category: [row.industry],
+        region: row.region || '',
+        description: row.description || '',
+        contact_name: row.contact_name,
+        contact_phone: row.contact_phone || '',
+        contact_email: row.contact_email,
+        is_verified: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+
+      success++;
+    } catch (err) {
+      failed++;
+      failDetails.push(`${row.company_name}：${err.message}`);
+    }
+  }
+
+  // Show result
+  let resultMsg = `导入完成！成功${success}条`;
+  if (failed > 0) {
+    resultMsg += `，失败${failed}条`;
+  }
+  
+  if (failDetails.length > 0) {
+    resultMsg += '\n\n失败详情：\n' + failDetails.join('\n');
+  }
+
+  closeModal();
+  showToast(resultMsg, failed > 0);
+  renderSuppliers();
+}
+
+function downloadImportTemplate() {
+  const headers = ['公司名称', '简称', '联系人', '联系电话', '邮箱', '行业', '地区', '公司简介'];
+  const sampleData = [
+    ['广州XX化妆品有限公司', '广州XX', '张三', '13800138000', 'zhangsan@example.com', '护肤品', '广东广州', '专注护肤品研发生产'],
+    ['上海YY美妆集团', '上海YY', '李四', '13900139000', 'lisi@example.com', '彩妆', '上海', '彩妆品牌运营商']
+  ];
+  
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleData]);
+  // Set column widths
+  ws['!cols'] = headers.map(h => ({ wch: Math.max(h.length * 2, 15) }));
+  
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '供应商导入模板');
+  XLSX.writeFile(wb, '异采供应商批量导入模板.xlsx');
 }

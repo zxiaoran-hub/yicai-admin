@@ -88,7 +88,6 @@ async function renderCompanies() {
                 <td>${formatDate(c.created_at)}</td>
                 <td>
                   <button class="btn btn-sm btn-outline" onclick="openEditCompany('${c.id}')">编辑</button>
-                  ${c.type !== 'platform' ? `<button class="btn btn-sm btn-primary" onclick="openCreateCompanyAdmin('${c.id}')">创建管理员</button>` : ''}
                   <button class="btn btn-sm btn-danger" onclick="deleteCompany('${c.id}','${(c.name || '').replace(/'/g, "\\'")}')">删除</button>
                 </td>
               </tr>
@@ -165,7 +164,6 @@ function renderCompaniesTable(data) {
       <td>${formatDate(c.created_at)}</td>
       <td>
         <button class="btn btn-sm btn-outline" onclick="openEditCompany('${c.id}')">编辑</button>
-        ${c.type !== 'platform' ? `<button class="btn btn-sm btn-primary" onclick="openCreateCompanyAdmin('${c.id}')">创建管理员</button>` : ''}
         <button class="btn btn-sm btn-danger" onclick="deleteCompany('${c.id}','${escapeHtml(c.name || '').replace(/'/g, "\\'")}')">删除</button>
       </td>
     </tr>
@@ -313,138 +311,6 @@ async function updateCompany(companyId) {
     renderCompanies();
   } catch (err) {
     showToast('更新失败: ' + err.message, true);
-  }
-}
-
-// ========== 创建公司管理员 ==========
-function openCreateCompanyAdmin(companyId) {
-  const company = companiesData.find(c => c.id == companyId);
-  if (!company) return showToast('公司不存在', true);
-  if (company.type === 'platform') return showToast('平台公司不需要创建管理员', true);
-
-  const typeName = company.type === 'supplier' ? '供应商' : '品牌方';
-  const content = `
-    <div style="margin-bottom:16px;padding:12px;background:var(--gray-50);border-radius:8px;">
-      <div style="font-weight:500;color:var(--gray-700);">为「${escapeHtml(company.name)}」创建${typeName}公司管理员</div>
-      <div style="font-size:12px;color:var(--gray-500);margin-top:4px;">管理员将拥有本公司角色管理和员工管理权限</div>
-    </div>
-    <div class="form-group">
-      <label>管理员邮箱 <span style="color:var(--danger)">*</span></label>
-      <input type="email" id="admin-email" placeholder="输入管理员邮箱">
-    </div>
-    <div class="form-group">
-      <label>初始密码 <span style="color:var(--danger)">*</span></label>
-      <input type="password" id="admin-password" placeholder="至少6位" minlength="6">
-    </div>
-    <div class="form-group">
-      <label>姓名</label>
-      <input type="text" id="admin-name" placeholder="管理员姓名">
-    </div>
-  `;
-
-  const footer = `
-    <button class="btn btn-outline" onclick="closeModal()">取消</button>
-    <button class="btn btn-primary" onclick="saveCompanyAdmin('${companyId}', '${company.type}')">创建管理员</button>
-  `;
-
-  showModal('创建公司管理员', content, footer);
-}
-
-async function saveCompanyAdmin(companyId, companyType) {
-  const email = document.getElementById('admin-email').value.trim();
-  const password = document.getElementById('admin-password').value;
-  const name = document.getElementById('admin-name').value.trim();
-
-  if (!email) return showToast('请输入邮箱', true);
-  if (!password || password.length < 6) return showToast('密码至少6位', true);
-
-  const btn = event.target;
-  btn.disabled = true;
-  btn.textContent = '创建中...';
-
-  try {
-    // 1. 创建认证账号
-    const signUpUrl = `${supabase.url}/auth/v1/signup`;
-    const signUpResp = await fetch(signUpUrl, {
-      method: 'POST',
-      headers: {
-        'apikey': supabase.key,
-        'Authorization': `Bearer ${supabase.key}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        email,
-        password,
-        data: name ? { name, full_name: name } : {}
-      })
-    });
-
-    if (!signUpResp.ok) {
-      const errData = await signUpResp.json().catch(() => ({}));
-      throw new Error(errData.error_description || errData.msg || `创建账号失败(${signUpResp.status})`);
-    }
-
-    const signUpResult = await signUpResp.json();
-    const userId = signUpResult.user?.id;
-    if (!userId) throw new Error('创建账号成功但未返回用户ID');
-
-    // 2. 查找或创建公司管理员角色
-    let adminRole = await supabase.query('roles', {
-      select: '*',
-      filter: { company_id: companyId, name: `${companyType === 'supplier' ? '供应商' : '品牌方'}公司管理员` }
-    });
-
-    let roleId;
-    if (adminRole && adminRole.length > 0) {
-      roleId = adminRole[0].id;
-    } else {
-      // 创建公司管理员角色
-      const newRole = await dbInsert('roles', {
-        company_id: parseInt(companyId),
-        name: `${companyType === 'supplier' ? '供应商' : '品牌方'}公司管理员`,
-        description: `${companyType === 'supplier' ? '供应商' : '品牌方'}公司管理员，拥有本公司管理权限`,
-        is_system: true,
-        data_scope: 'company'
-      });
-      roleId = newRole[0]?.id;
-      if (!roleId) throw new Error('创建管理员角色失败');
-
-      // 关联公司管理权限
-      const permKeys = ['menu:product', 'btn:product:create', 'btn:product:edit', 'btn:product:delete', 'btn:product:publish',
-        'menu:inquiry', 'btn:inquiry:create', 'btn:inquiry:edit', 'btn:inquiry:delete',
-        'menu:quote', 'btn:quote:create', 'btn:quote:edit', 'btn:quote:accept',
-        'menu:order', 'btn:order:create', 'btn:order:edit', 'btn:order:confirm', 'btn:order:cancel',
-        'menu:supplier', 'btn:supplier:view',
-        'menu:role', 'btn:role:create', 'btn:role:edit', 'btn:role:delete', 'btn:role:assign',
-        'menu:user', 'btn:user:create', 'btn:user:edit', 'btn:user:delete', 'btn:user:assign_role',
-        'menu:dashboard', 'menu:audit_log'];
-      for (const key of permKeys) {
-        const perm = await supabase.query('permissions', { select: 'id', filter: { button_key: key } });
-        if (perm && perm.length > 0) {
-          await dbInsert('role_permissions', { role_id: roleId, permission_id: perm[0].id });
-        }
-      }
-    }
-
-    // 3. 关联用户角色
-    await dbInsert('user_roles', {
-      user_id: userId,
-      role_id: roleId,
-      company_id: parseInt(companyId),
-      user_email: email
-    });
-
-    // 审计日志
-    if (typeof writeAuditLog === 'function') {
-      await writeAuditLog('user:create', `管理员：${email}`, `为公司创建管理员「${email}」`, userId);
-    }
-
-    closeModal();
-    showToast('公司管理员创建成功！' + (signUpResult.user?.confirmation_sent_at ? '（需要邮箱验证）' : ''));
-  } catch (err) {
-    showToast('创建失败: ' + err.message, true);
-    btn.disabled = false;
-    btn.textContent = '创建管理员';
   }
 }
 
