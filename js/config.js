@@ -194,7 +194,26 @@ const supabase = {
     });
     if (!response.ok) {
       const err = await response.json();
-      throw new Error(err.error_description || err.msg || '注册失败');
+      const errMsg = err.error_description || err.msg || '注册失败';
+      // 用户已存在时，尝试用默认密码登录获取用户信息
+      if (response.status === 422 || /already.*registered/i.test(errMsg)) {
+        try {
+          const signInResp = await fetch(`${this.url}/auth/v1/token?grant_type=password`, {
+            method: 'POST',
+            headers: {
+              'apikey': this.key,
+              'Authorization': `Bearer ${this.key}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ email, password })
+          });
+          if (signInResp.ok) {
+            const signInData = await signInResp.json();
+            return { user: signInData.user, existingUser: true };
+          }
+        } catch (e) { /* sign-in fallback failed */ }
+      }
+      throw new Error(errMsg);
     }
     return response.json();
   },

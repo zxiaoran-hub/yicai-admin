@@ -719,11 +719,16 @@ async function executeBatchImport() {
         const signUpResult = await supabase.authSignUp(row.contact_email, defaultPassword);
         if (signUpResult?.user) {
           authUserId = signUpResult.user.id;
+          if (signUpResult.existingUser) isNewAccount = false;
         }
       } catch (signUpErr) {
-        if (signUpErr.message && signUpErr.message.includes('already registered')) {
+        const isExisting = signUpErr.message && (
+          /already.*registered/i.test(signUpErr.message) ||
+          signUpErr.message.includes('422')
+        );
+        if (isExisting) {
           isNewAccount = false;
-          // Try to find existing user
+          // 尝试通过 RPC 查找已存在用户的 ID
           try {
             authUserId = await supabase.rpc('get_user_id_by_email', { p_email: row.contact_email });
           } catch (e) { /* ignore */ }
