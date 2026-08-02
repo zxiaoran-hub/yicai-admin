@@ -112,13 +112,19 @@ async function dbDelete(table, match) {
     queryParams.push(`${key}=eq.${value}`);
   }
   url += queryParams.join('&');
+  const headers = await getAuthHeaders();
+  headers['Prefer'] = 'return=representation';
   const response = await fetch(url, {
     method: 'DELETE',
-    headers: await getAuthHeaders()
+    headers: headers
   });
   if (!response.ok) {
     const errText = await response.text();
     throw new Error(`删除失败(${response.status}): ${errText}`);
+  }
+  const deleted = await response.json();
+  if (!deleted || deleted.length === 0) {
+    throw new Error('未找到匹配记录，删除未生效（可能是权限不足）');
   }
   return true;
 }
