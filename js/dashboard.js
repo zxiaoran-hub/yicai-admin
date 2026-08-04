@@ -4,33 +4,41 @@ async function renderDashboard() {
   body.innerHTML = '<div class="loading-spinner"><div class="spinner"></div>加载中...</div>';
 
   try {
-    // 并行查询所有数据
+    // 本月起始时间（用于新增统计）
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+    // 并行查询所有数据（新表：采购方=companies type='buyer'，询价=buyer_inquiries，报价=supplier_quotes，订单=buyer_orders）
     const [
       suppliers,
-      buyers,
+      totalBuyers,
+      newBuyerCompanies,
       inquiries,
       quotes,
       orders
     ] = await Promise.all([
       supabase.query('suppliers', { select: 'is_verified,created_at' }),
-      supabase.query('buyers', { select: 'created_at' }),
-      supabase.query('inquiries', { select: 'status,created_at' }),
-      supabase.query('inquiry_quotes', { select: 'id,created_at' }),
-      supabase.query('orders', { select: 'status,created_at' })
+      supabase.getCount('companies', { type: 'buyer' }),
+      supabase.query('companies', {
+        select: 'id',
+        filter: { type: 'buyer' },
+        gte: { created_at: monthStart }
+      }),
+      supabase.query('buyer_inquiries', { select: 'status,created_at' }),
+      supabase.query('supplier_quotes', { select: 'id,created_at' }),
+      supabase.query('buyer_orders', { select: 'status,created_at' })
     ]);
 
     // 统计数据
     const totalSuppliers = suppliers.length;
-    const totalBuyers = buyers.length;
-    const activeInquiries = inquiries.filter(i => i.status === 'active').length;
+    const totalBuyersCount = totalBuyers;
+    const activeInquiries = inquiries.filter(i => i.status === 'open').length;
     const totalQuotes = quotes.length;
     const totalOrders = orders.length;
 
     // 本月新增用户
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const newSuppliers = suppliers.filter(s => s.created_at >= monthStart).length;
-    const newBuyers = buyers.filter(b => b.created_at >= monthStart).length;
+    const newBuyers = (newBuyerCompanies || []).length;
     const newUsers = newSuppliers + newBuyers;
 
     // 供应商状态分布（使用 is_verified 布尔字段）
@@ -38,10 +46,10 @@ async function renderDashboard() {
     const pendingCount = suppliers.filter(s => s.is_verified !== true).length;
     const rejectedCount = 0; // is_verified 为布尔值，暂无 rejected 状态
 
-    // 询价状态分布
-    const activeCount = inquiries.filter(i => i.status === 'active').length;
+    // 询价状态分布（新表枚举：open/closed/awarded/cancelled）
+    const activeCount = inquiries.filter(i => i.status === 'open').length;
     const closedCount = inquiries.filter(i => i.status === 'closed').length;
-    const completedCount = inquiries.filter(i => i.status === 'completed').length;
+    const completedCount = inquiries.filter(i => i.status === 'awarded').length;
     const cancelledCount = inquiries.filter(i => i.status === 'cancelled').length;
 
     // 订单状态分布
@@ -113,7 +121,7 @@ async function renderDashboard() {
         </div>
         <div class="stat-card">
           <div class="stat-icon blue">🛒</div>
-          <div class="stat-value">${totalBuyers}</div>
+          <div class="stat-value">${totalBuyersCount}</div>
           <div class="stat-label">采购方总数</div>
         </div>
         <div class="stat-card">
@@ -170,7 +178,7 @@ async function renderDashboard() {
           <h3>采购需求状态</h3>
           <div class="status-distribution">
             <div class="status-row">
-              <span class="status-label">进行中</span>
+              <span class="status-label">询价中</span>
               <div class="status-bar-bg">
                 <div class="status-bar-fill green" style="width:${(activeCount/totalInq*100).toFixed(1)}%">${activeCount > 0 ? activeCount : ''}</div>
               </div>
@@ -184,7 +192,7 @@ async function renderDashboard() {
               <span class="status-count">${closedCount}</span>
             </div>
             <div class="status-row">
-              <span class="status-label">已完成</span>
+              <span class="status-label">已定标</span>
               <div class="status-bar-bg">
                 <div class="status-bar-fill blue" style="width:${(completedCount/totalInq*100).toFixed(1)}%">${completedCount > 0 ? completedCount : ''}</div>
               </div>

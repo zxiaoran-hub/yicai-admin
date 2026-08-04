@@ -200,10 +200,10 @@ async function viewSupplierDetail(authId) {
       auth_id: raw.user_id || raw.auth_id
     };
 
-    // 获取该供应商的报价历史
+    // 获取该供应商的报价历史（新表 supplier_quotes）
     let quotes = [];
     try {
-      quotes = await supabase.query('inquiry_quotes', {
+      quotes = await supabase.query('supplier_quotes', {
         select: '*',
         filter: { supplier_id: authId },
         order: 'created_at.desc'
@@ -275,7 +275,7 @@ async function viewSupplierDetail(authId) {
               ${quotes.map(q => `
                 <tr>
                   <td>${q.inquiry_id ? q.inquiry_id.substring(0, 8) + '...' : '-'}</td>
-                  <td>${escapeHtml(q.price || '-')} ${escapeHtml(q.currency || '')}</td>
+                  <td>${q.unit_price ? '¥' + Number(q.unit_price).toLocaleString() : '-'}</td>
                   <td>${escapeHtml(q.moq || '-')}</td>
                   <td>${q.lead_time || '-'}</td>
                   <td>${getStatusBadge(q.status)}</td>
@@ -312,6 +312,7 @@ async function verifySupplier(authId, status) {
       try {
         const updateData = {
           verification_status: status,
+          is_verified: status === 'verified',
           verified_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
@@ -436,32 +437,30 @@ async function handleAddSupplier(event) {
         console.log('[AddSupplier] User already exists, looking up by email...');
         isNewAccount = false;
 
-        // 通过 admin API 查找用户
-        const headers = await getAuthHeaders();
-        const listUrl = `${supabase.url}/admin/users?filter=${encodeURIComponent(contactEmail)}`;
-        const listResp = await fetch(listUrl, { method: 'GET', headers });
+        // 通过 RPC 查找已注册用户的 ID
+        let existingUserId = null;
+        try {
+          existingUserId = await supabase.rpc('get_user_id_by_email', { p_email: contactEmail });
+        } catch (e) {
+          console.warn('[AddSupplier] RPC lookup failed:', e.message);
+        }
 
-        if (!listResp.ok) {
+        if (!existingUserId) {
           showToast('该邮箱已注册，但无法查询现有账号，请换用其他邮箱');
           return;
         }
 
-        const listData = await listResp.json();
-        const existingUser = listData.users?.find(u => u.email.toLowerCase() === contactEmail.toLowerCase());
-
-        if (!existingUser) {
-          showToast('该邮箱已注册，但无法找到对应账号');
-          return;
-        }
-
         // 检查是否已是供应商
-        const existingSupplier = await supabase.query('suppliers', { user_id: `eq.${existingUser.id}` });
+        const existingSupplier = await supabase.query('suppliers', {
+          select: 'id',
+          filter: { user_id: existingUserId }
+        });
         if (existingSupplier && existingSupplier.length > 0) {
           showToast('该邮箱已是供应商');
           return;
         }
 
-        authUserId = existingUser.id;
+        authUserId = existingUserId;
         console.log('[AddSupplier] Using existing auth user:', authUserId);
       } else {
         throw signUpErr;

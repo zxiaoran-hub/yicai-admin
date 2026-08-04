@@ -278,62 +278,45 @@ async function saveCreateUser() {
     let isNewAccount = true;
 
     try {
-      const signUpUrl = `${supabase.url}/auth/v1/signup`;
-      const signUpResp = await fetch(signUpUrl, {
-        method: 'POST',
-        headers: {
-          'apikey': supabase.key,
-          'Authorization': `Bearer ${supabase.key}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          email,
-          password,
-          data: name ? { name, full_name: name } : {}
-        })
-      });
-
-      if (!signUpResp.ok) {
-        const errData = await signUpResp.json().catch(() => ({}));
-        const errMsg = errData.error_description || errData.msg || '';
-        // 用户已存在 → 查找已有用户ID并关联
-        if (errMsg.includes('already registered') || signUpResp.status === 400) {
-          isNewAccount = false;
-          try {
-            userId = await supabase.rpc('get_user_id_by_email', { p_email: email });
-          } catch (e) {
-            console.warn('RPC lookup failed:', e.message);
-          }
-          if (!userId) {
-            throw new Error('该邮箱已注册，但无法查找用户ID。请尝试使用「分配角色」功能。');
-          }
-        } else {
-          throw new Error(errMsg || `创建账号失败(${signUpResp.status})`);
-        }
-      } else {
-        const signUpResult = await signUpResp.json();
-        userId = signUpResult.user?.id || null;
-        if (!userId) {
-          // 返回成功但没有 user.id，尝试查找
-          isNewAccount = false;
-          try {
-            userId = await supabase.rpc('get_user_id_by_email', { p_email: email });
-          } catch (e) {
-            console.warn('RPC lookup failed:', e.message);
-          }
+      const signUpResult = await supabase.signUp(
+        email,
+        password,
+        name ? { name, full_name: name } : {}
+      );
+      userId = signUpResult.user?.id || null;
+      if (!userId) {
+        // 返回成功但没有 user.id，尝试查找
+        isNewAccount = false;
+        try {
+          userId = await supabase.rpc('get_user_id_by_email', { p_email: email });
+        } catch (e) {
+          console.warn('RPC lookup failed:', e.message);
         }
       }
     } catch (signUpErr) {
-      if (signUpErr.message && signUpErr.message.includes('无法查找用户ID')) {
+      const errMsg = signUpErr.message || '';
+      if (/already.*registered/i.test(errMsg) || errMsg.includes('已注册')) {
+        // 用户已存在 → 查找已有用户ID并关联
+        isNewAccount = false;
+        try {
+          userId = await supabase.rpc('get_user_id_by_email', { p_email: email });
+        } catch (e) {
+          console.warn('RPC lookup failed:', e.message);
+        }
+        if (!userId) {
+          throw new Error('该邮箱已注册，但无法查找用户ID。请尝试使用「分配角色」功能。');
+        }
+      } else if (errMsg.includes('无法查找用户ID')) {
         throw signUpErr;
-      }
-      // 其他 signUp 错误，尝试 fallback
-      console.warn('signUp error, trying fallback:', signUpErr.message);
-      try {
-        userId = await supabase.rpc('get_user_id_by_email', { p_email: email });
-        if (userId) isNewAccount = false;
-      } catch (e) {
-        throw new Error('创建账号失败: ' + signUpErr.message);
+      } else {
+        // 其他 signUp 错误，尝试 fallback
+        console.warn('signUp error, trying fallback:', errMsg);
+        try {
+          userId = await supabase.rpc('get_user_id_by_email', { p_email: email });
+          if (userId) isNewAccount = false;
+        } catch (e) {
+          throw new Error('创建账号失败: ' + errMsg);
+        }
       }
     }
 

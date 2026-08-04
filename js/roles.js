@@ -90,43 +90,14 @@ const DEFAULT_PERMISSION_TREE = [
 ];
 
 // ========== 通用数据库操作辅助 ==========
+// 统一走自建 API 封装（supabase.insert / supabase.delete），保留原函数名与错误语义
 async function dbInsert(table, data) {
-  const headers = await getAuthHeaders();
-  headers['Prefer'] = 'return=representation';
-  const response = await fetch(`${supabase.url}/rest/v1/${table}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(data)
-  });
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`插入失败(${response.status}): ${errText}`);
-  }
-  return response.json();
+  return supabase.insert(table, data);
 }
 
 async function dbDelete(table, match) {
-  let url = `${supabase.url}/rest/v1/${table}?`;
-  const queryParams = [];
-  for (const [key, value] of Object.entries(match)) {
-    queryParams.push(`${key}=eq.${value}`);
-  }
-  url += queryParams.join('&');
-  const headers = await getAuthHeaders();
-  headers['Prefer'] = 'return=representation';
-  const response = await fetch(url, {
-    method: 'DELETE',
-    headers: headers
-  });
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`删除失败(${response.status}): ${errText}`);
-  }
-  const deleted = await response.json();
-  if (!deleted || deleted.length === 0) {
-    throw new Error('未找到匹配记录，删除未生效（可能是权限不足）');
-  }
-  return true;
+  // supabase.delete 在返回空数组（未删除任何记录）时同样抛错，与原实现语义一致
+  return supabase.delete(table, match);
 }
 
 // 写入审计日志（匹配 permission_audit_log 实际表结构）

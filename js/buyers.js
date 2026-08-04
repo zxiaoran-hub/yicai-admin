@@ -177,31 +177,30 @@ window.handleAddBuyer = async function(event) {
         console.log('[AddBuyer] User already exists, looking up...');
         isNewAccount = false;
 
-        const headers = await getAuthHeaders();
-        const listUrl = `${supabase.url}/admin/users?filter=${encodeURIComponent(adminEmail)}`;
-        const listResp = await fetch(listUrl, { method: 'GET', headers });
+        // 通过 RPC 查找已注册用户的 ID
+        let existingUserId = null;
+        try {
+          existingUserId = await supabase.rpc('get_user_id_by_email', { p_email: adminEmail });
+        } catch (e) {
+          console.warn('[AddBuyer] RPC lookup failed:', e.message);
+        }
 
-        if (!listResp.ok) {
+        if (!existingUserId) {
           showToast('该邮箱已注册，但无法查询现有账号');
           return;
         }
 
-        const listData = await listResp.json();
-        const existingUser = listData.users?.find(u => u.email.toLowerCase() === adminEmail.toLowerCase());
-
-        if (!existingUser) {
-          showToast('该邮箱已注册，但无法找到对应账号');
-          return;
-        }
-
         // 检查是否已有公司
-        const existingRoles = await supabase.query('user_roles', { user_id: `eq.${existingUser.id}` });
+        const existingRoles = await supabase.query('user_roles', {
+          select: 'id,company_id',
+          filter: { user_id: existingUserId }
+        });
         if (existingRoles?.some(r => r.company_id)) {
           showToast('该用户已关联企业');
           return;
         }
 
-        authUserId = existingUser.id;
+        authUserId = existingUserId;
       } else {
         throw signUpErr;
       }
@@ -227,8 +226,9 @@ window.handleAddBuyer = async function(event) {
 
     // 第三步：查找企业管理员角色
     const roles = await supabase.query('roles', {
-      name: 'ilike.%company%admin%',
-      is_system: 'eq.true'
+      select: '*',
+      like: { name: '%company%admin%' },
+      filter: { is_system: true }
     });
 
     let roleId = null;
@@ -237,8 +237,9 @@ window.handleAddBuyer = async function(event) {
     } else {
       // 如果没有找到公司管理员角色，尝试找默认的企业角色
       const defaultRoles = await supabase.query('roles', {
-        name: 'ilike.%buyer%',
-        is_system: 'eq.true'
+        select: '*',
+        like: { name: '%buyer%' },
+        filter: { is_system: true }
       });
       if (defaultRoles && defaultRoles.length > 0) {
         roleId = defaultRoles[0].id;

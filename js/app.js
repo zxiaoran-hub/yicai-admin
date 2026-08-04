@@ -12,15 +12,11 @@ function saveSession(data) {
 function loadSession() {
   const token = secureStorage.getToken();
   if (!token) return null;
-  // 简单解析JWT获取用户信息
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    currentUser = { id: payload.sub, email: payload.email };
-    return { access_token: token, user: currentUser };
-  } catch (e) {
-    secureStorage.clearToken();
-    return null;
-  }
+  // 解析JWT获取用户信息（base64url 安全解码）
+  const payload = decodeJwtPayload(token);
+  if (!payload || !payload.sub) return null;
+  currentUser = { id: payload.sub, email: payload.email };
+  return { access_token: token, user: currentUser };
 }
 
 function logout() {
@@ -335,6 +331,8 @@ function getStatusBadge(status) {
     'verified': '<span class="badge badge-success">已认证</span>',
     'rejected': '<span class="badge badge-danger">已拒绝</span>',
     'active': '<span class="badge badge-success">进行中</span>',
+    'open': '<span class="badge badge-success">询价中</span>',
+    'awarded': '<span class="badge badge-info">已定标</span>',
     'closed': '<span class="badge badge-gray">已关闭</span>',
     'completed': '<span class="badge badge-info">已完成</span>',
     'cancelled': '<span class="badge badge-danger">已取消</span>',
@@ -396,8 +394,8 @@ function renderSettings() {
       </div>
       <div class="settings-row">
         <div>
-          <div class="setting-label">Supabase 连接</div>
-          <div class="setting-desc">已连接至 ${SUPABASE_URL}</div>
+          <div class="setting-label">数据服务</div>
+          <div class="setting-desc">自建 API（同域部署，nginx 反代 /api）</div>
         </div>
         <span class="badge badge-success">正常</span>
       </div>

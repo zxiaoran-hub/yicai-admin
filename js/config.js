@@ -1,106 +1,84 @@
-// Supabase 配置
-const SUPABASE_URL = 'https://spb-m06skr4cysol4lwz.supabase.opentrust.net';
-const SUPABASE_ANON_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiIsInJlZiI6InNwYi1tMDZza3I0Y3lzb2w0bHd6IiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE3ODUzNzcwNjIsImV4cCI6MjEwMDk1MzA2Mn0.2OO2jmTetq6vOE4xTRruNMXVUI89ATMIStpIl4ul3kI';
+// 异采 YiCai 管理端 API 配置（自建后端版，替代原 Supabase）
+// API 与前端同域部署（nginx 反代 /api），无需跨域配置
+const API_BASE = '';
 
 // 设置环境为生产环境（移除console输出）
 window.ENV = 'production';
 
-// 检查 token 是否即将过期（5分钟内过期视为已过期）
-function isTokenExpired(token) {
+// 解码 JWT payload（兼容 base64url 编码与 UTF-8 字符）
+function decodeJwtPayload(token) {
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    return payload.exp * 1000 - Date.now() < 5 * 60 * 1000;
-  } catch { return true; }
+    let b64 = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch { return null; }
 }
 
-// 刷新 token - 使用secureStorage
+// 检查 token 是否即将过期（5分钟内过期视为已过期）
+function isTokenExpired(token) {
+  const payload = decodeJwtPayload(token);
+  if (!payload || !payload.exp) return false;
+  return payload.exp * 1000 - Date.now() < 5 * 60 * 1000;
+}
+
+// 刷新 token（单飞模式：并发请求共享同一次刷新，避免轮换竞态）
+let __refreshInFlight = null;
 async function refreshTokenIfNeeded() {
   const accessToken = secureStorage.getToken();
   const refreshTok = secureStorage.getRefreshToken();
   if (!accessToken || !refreshTok) return;
   if (!isTokenExpired(accessToken)) return;
 
-  try {
-    const resp = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
-      method: 'POST',
-      headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: refreshTok })
-    });
-    if (resp.ok) {
-      const data = await resp.json();
-      secureStorage.setToken(data.access_token, data.refresh_token);
-    } else {
-      // refresh 也失败了，清除登录态
-      secureStorage.clearToken();
-      if (typeof logout === 'function') logout();
-    }
-  } catch (e) {
-    logger.warn('Token refresh failed:', e);
+  if (!__refreshInFlight) {
+    __refreshInFlight = (async () => {
+      try {
+        const resp = await fetch(`${API_BASE}/api/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: refreshTok })
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          secureStorage.setToken(data.access_token, data.refresh_token);
+        } else {
+          // 刷新被拒绝：保留现有令牌，由服务端按 401 处理，避免误清登录态
+          logger.warn('Token refresh rejected:', resp.status);
+        }
+      } catch (e) {
+        // 网络异常：同样不激进清除，等待下次请求重试
+        logger.warn('Token refresh failed:', e);
+      } finally {
+        setTimeout(() => { __refreshInFlight = null; }, 1000);
+      }
+    })();
   }
+  await __refreshInFlight;
 }
 
-// 获取当前认证 token（登录后用用户token，否则用anon key）
+// 获取当前认证请求头（未登录时不带 Authorization，服务端按匿名规则处理）
+// X-CSRF-Token 保留（服务端忽略，仅兼容前端安全层）
 async function getAuthHeaders() {
   await refreshTokenIfNeeded();
   const userToken = secureStorage.getToken();
-  const authToken = userToken || SUPABASE_ANON_KEY;
-  return {
-    'apikey': SUPABASE_ANON_KEY,
-    'Authorization': `Bearer ${authToken}`,
+  const headers = {
     'Content-Type': 'application/json',
     'X-CSRF-Token': getCsrfToken()
   };
+  if (userToken) headers['Authorization'] = `Bearer ${userToken}`;
+  return headers;
 }
 
-// Supabase REST API 辅助函数
+// 数据访问封装（接口签名与原 Supabase 版保持一致，业务代码无需改动）
 const supabase = {
-  url: SUPABASE_URL,
-  key: SUPABASE_ANON_KEY,
-
   async query(table, params = {}) {
-    let url = `${this.url}/rest/v1/${table}`;
-    const queryParams = [];
-
-    if (params.select) queryParams.push(`select=${params.select}`);
-    if (params.filter) {
-      for (const [key, value] of Object.entries(params.filter)) {
-        queryParams.push(`${key}=eq.${value}`);
-      }
-    }
-    if (params.order) queryParams.push(`order=${params.order}`);
-    if (params.limit) queryParams.push(`limit=${params.limit}`);
-    if (params.offset) queryParams.push(`offset=${params.offset}`);
-    if (params.like) {
-      for (const [key, value] of Object.entries(params.like)) {
-        queryParams.push(`${key}=ilike.${value}`);
-      }
-    }
-    if (params.in) {
-      for (const [key, value] of Object.entries(params.in)) {
-        queryParams.push(`${key}=in.(${value})`);
-      }
-    }
-    if (params.gte) {
-      for (const [key, value] of Object.entries(params.gte)) {
-        queryParams.push(`${key}=gte.${value}`);
-      }
-    }
-    if (params.lte) {
-      for (const [key, value] of Object.entries(params.lte)) {
-        queryParams.push(`${key}=lte.${value}`);
-      }
-    }
-
-    if (queryParams.length > 0) {
-      url += '?' + queryParams.join('&');
-    }
-
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
-
     try {
-      const response = await fetch(url, {
+      const response = await fetch(`${API_BASE}/api/query`, {
+        method: 'POST',
         headers: await getAuthHeaders(),
+        body: JSON.stringify({ table, ...params }),
         signal: controller.signal
       });
       clearTimeout(timeoutId);
@@ -117,94 +95,104 @@ const supabase = {
   },
 
   async rpc(functionName, params = {}) {
-    const url = `${this.url}/rest/v1/rpc/${functionName}`;
-    const response = await fetch(url, {
+    const response = await fetch(`${API_BASE}/api/rpc/${functionName}`, {
       method: 'POST',
       headers: await getAuthHeaders(),
       body: JSON.stringify(params)
     });
-    if (!response.ok) throw new Error(`RPC failed: ${response.status}`);
-    return response.json();
-  },
-
-  async update(table, data, match) {
-    let url = `${this.url}/rest/v1/${table}?`;
-    const queryParams = [];
-    for (const [key, value] of Object.entries(match)) {
-      queryParams.push(`${key}=eq.${value}`);
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`RPC failed: ${response.status} - ${errText}`);
     }
-    url += queryParams.join('&');
-
-    const headers = await getAuthHeaders();
-    headers['Prefer'] = 'return=representation';
-    const response = await fetch(url, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify(data)
-    });
-    if (!response.ok) throw new Error(`Update failed: ${response.status}`);
     return response.json();
   },
 
   async insert(table, data) {
-    const url = `${this.url}/rest/v1/${table}`;
-    const headers = await getAuthHeaders();
-    headers['Prefer'] = 'return=representation';
-    headers['Content-Type'] = 'application/json';
-    const response = await fetch(url, {
+    const response = await fetch(`${API_BASE}/api/insert`, {
       method: 'POST',
-      headers,
-      body: JSON.stringify(data)
+      headers: await getAuthHeaders(),
+      body: JSON.stringify({ table, data })
     });
     if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.message || err.error_description || `Insert failed: ${response.status}`);
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.message || `Insert failed: ${response.status}`);
     }
     return response.json();
+  },
+
+  async update(table, data, match) {
+    const response = await fetch(`${API_BASE}/api/update`, {
+      method: 'POST',
+      headers: await getAuthHeaders(),
+      body: JSON.stringify({ table, data, match })
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.message || `Update failed: ${response.status}`);
+    }
+    return response.json();
+  },
+
+  async delete(table, match) {
+    const response = await fetch(`${API_BASE}/api/delete`, {
+      method: 'POST',
+      headers: await getAuthHeaders(),
+      body: JSON.stringify({ table, match })
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.message || `Delete failed: ${response.status}`);
+    }
+    const deleted = await response.json();
+    if (!deleted || deleted.length === 0) {
+      throw new Error('未找到匹配记录，删除未生效（可能是权限不足）');
+    }
+    return true;
   },
 
   async signIn(email, password) {
-    const url = `${this.url}/auth/v1/token?grant_type=password`;
-    const response = await fetch(url, {
+    const response = await fetch(`${API_BASE}/api/auth/login`, {
       method: 'POST',
-      headers: {
-        'apikey': this.key,
-        'Authorization': `Bearer ${this.key}`,
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
     });
     if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error_description || err.msg || '登录失败');
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.message || '登录失败');
     }
     return response.json();
   },
 
-  async authSignUp(email, password) {
-    const url = `${this.url}/auth/v1/signup`;
-    const response = await fetch(url, {
+  // 注册（metadata 映射到 body.data，如 {name, full_name}）
+  async signUp(email, password, metadata) {
+    const response = await fetch(`${API_BASE}/api/auth/signup`, {
       method: 'POST',
-      headers: {
-        'apikey': this.key,
-        'Authorization': `Bearer ${this.key}`,
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, data: metadata })
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.message || '注册失败');
+    }
+    return response.json();
+  },
+
+  // 注册（管理端创建账号用）：已存在邮箱（422）时降级为登录，返回 { user, existingUser:true }
+  async authSignUp(email, password) {
+    const response = await fetch(`${API_BASE}/api/auth/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
     });
     if (!response.ok) {
-      const err = await response.json();
-      const errMsg = err.error_description || err.msg || '注册失败';
-      // 用户已存在时，尝试用默认密码登录获取用户信息
+      const err = await response.json().catch(() => ({}));
+      const errMsg = err.message || err.msg || '注册失败';
+      // 用户已存在时，尝试直接登录获取用户信息
       if (response.status === 422 || /already.*registered/i.test(errMsg)) {
         try {
-          const signInResp = await fetch(`${this.url}/auth/v1/token?grant_type=password`, {
+          const signInResp = await fetch(`${API_BASE}/api/auth/login`, {
             method: 'POST',
-            headers: {
-              'apikey': this.key,
-              'Authorization': `Bearer ${this.key}`,
-              'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password })
           });
           if (signInResp.ok) {
@@ -219,41 +207,22 @@ const supabase = {
   },
 
   async getCount(table, filter = {}) {
-    let url = `${this.url}/rest/v1/${table}?select=count&count=exact`;
-    const queryParams = [];
-    for (const [key, value] of Object.entries(filter)) {
-      queryParams.push(`${key}=eq.${value}`);
+    try {
+      const response = await fetch(`${API_BASE}/api/count`, {
+        method: 'POST',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({ table, filter })
+      });
+      if (!response.ok) return 0;
+      const data = await response.json();
+      return data.count || 0;
+    } catch {
+      return 0;
     }
-    if (queryParams.length > 0) {
-      url += '&' + queryParams.join('&');
-    }
-    const headers = await getAuthHeaders();
-    headers['Prefer'] = 'count=exact';
-    const response = await fetch(url, {
-      headers
-    });
-    if (!response.ok) return 0;
-    const cr = response.headers.get('content-range');
-    if (cr) {
-      const match = cr.match(/\/(\d+)/);
-      return match ? parseInt(match[1]) : 0;
-    }
-    return 0;
   },
 
+  // 按 select 子句取统计数据（内部走 /api/query）
   async getStats(table, selectClause, filter = {}) {
-    let url = `${this.url}/rest/v1/${table}?select=${selectClause}`;
-    const queryParams = [];
-    for (const [key, value] of Object.entries(filter)) {
-      queryParams.push(`${key}=eq.${value}`);
-    }
-    if (queryParams.length > 0) {
-      url += '&' + queryParams.join('&');
-    }
-    const response = await fetch(url, {
-      headers: await getAuthHeaders()
-    });
-    if (!response.ok) return [];
-    return response.json();
+    return this.query(table, { select: selectClause, filter });
   }
 };

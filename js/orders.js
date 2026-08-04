@@ -1,4 +1,4 @@
-// ========== 订单管理 ==========
+// ========== 订单管理（新表 buyer_orders） ==========
 let ordersPage = 1;
 let ordersFilter = { status: '', search: '' };
 const ordersPageSize = 20;
@@ -8,7 +8,7 @@ async function renderOrders() {
   body.innerHTML = '<div class="loading-spinner"><div class="spinner"></div>加载中...</div>';
 
   try {
-    const allOrders = await supabase.query('orders', {
+    const allOrders = await supabase.query('buyer_orders', {
       select: '*',
       order: 'created_at.desc'
     });
@@ -63,7 +63,7 @@ async function renderOrders() {
               <tr>
                 <td style="font-weight:500;color:var(--gray-900)">${escapeHtml(o.order_no || '-')}</td>
                 <td>${escapeHtml(o.supplier_name || '-')}</td>
-                <td>${o.total_amount ? `${escapeHtml(o.currency || '¥')}${Number(o.total_amount).toLocaleString()}` : '-'}</td>
+                <td>${o.total_price ? `¥${Number(o.total_price).toLocaleString()}` : '-'}</td>
                 <td>${formatDate(o.delivery_date)}</td>
                 <td>${getStatusBadge(o.status)}</td>
                 <td>${formatDate(o.created_at)}</td>
@@ -112,18 +112,18 @@ window.ordersGoToPage = function(page) {
 
 async function viewOrderDetail(orderId) {
   try {
-    const orders = await supabase.query('orders', {
+    const orders = await supabase.query('buyer_orders', {
       select: '*',
       filter: { id: orderId }
     });
     if (!orders.length) return showToast('订单不存在', true);
     const o = orders[0];
 
-    // 获取关联询价
+    // 获取关联询价（新表 buyer_inquiries）
     let inquiry = null;
     if (o.inquiry_id) {
       try {
-        const inqs = await supabase.query('inquiries', {
+        const inqs = await supabase.query('buyer_inquiries', {
           select: '*',
           filter: { id: o.inquiry_id }
         });
@@ -146,12 +146,28 @@ async function viewOrderDetail(orderId) {
           <span class="detail-value">${escapeHtml(o.supplier_name || '-')}</span>
         </div>
         <div class="detail-item">
+          <span class="detail-label">商品名称</span>
+          <span class="detail-value">${escapeHtml(o.product_name || '-')}</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">数量</span>
+          <span class="detail-value">${escapeHtml(o.quantity || '-')} ${escapeHtml(o.unit || '')}</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">单价</span>
+          <span class="detail-value">${o.unit_price ? `¥${Number(o.unit_price).toLocaleString()}` : '-'}</span>
+        </div>
+        <div class="detail-item">
           <span class="detail-label">订单金额</span>
-          <span class="detail-value">${o.total_amount ? `${escapeHtml(o.currency || '¥')}${Number(o.total_amount).toLocaleString()}` : '-'}</span>
+          <span class="detail-value">${o.total_price ? `¥${Number(o.total_price).toLocaleString()}` : '-'}</span>
         </div>
         <div class="detail-item">
           <span class="detail-label">交期</span>
           <span class="detail-value">${formatDate(o.delivery_date)}</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">期望交付日期</span>
+          <span class="detail-value">${formatDate(o.expected_date)}</span>
         </div>
         <div class="detail-item">
           <span class="detail-label">创建时间</span>
@@ -165,6 +181,12 @@ async function viewOrderDetail(orderId) {
           <span class="detail-label">关联询价</span>
           <span class="detail-value">${o.inquiry_id ? o.inquiry_id.substring(0, 8) + '...' : '-'}</span>
         </div>
+        ${o.notes ? `
+        <div class="detail-item full">
+          <span class="detail-label">备注</span>
+          <span class="detail-value">${escapeHtml(o.notes)}</span>
+        </div>
+        ` : ''}
       </div>
       ${inquiry ? `
         <div class="sub-table-container">
