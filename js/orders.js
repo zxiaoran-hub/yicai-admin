@@ -149,6 +149,16 @@ async function viewOrderDetail(orderId) {
           <span class="detail-label">商品名称</span>
           <span class="detail-value">${escapeHtml(o.product_name || '-')}</span>
         </div>
+        ${Array.isArray(o.product_images) && o.product_images.length > 0 ? `
+        <div class="detail-item full">
+          <span class="detail-label">产品图片</span>
+          <span class="detail-value" style="display:flex;flex-wrap:wrap;gap:8px;">
+            ${o.product_images.filter(url => !!url).map(url => `
+              <img src="${escapeHtml(url)}" alt="产品图" style="height:64px;border-radius:4px;object-fit:cover;" onerror="this.style.display='none'">
+            `).join('')}
+          </span>
+        </div>
+        ` : ''}
         <div class="detail-item">
           <span class="detail-label">数量</span>
           <span class="detail-value">${escapeHtml(o.quantity || '-')} ${escapeHtml(o.unit || '')}</span>

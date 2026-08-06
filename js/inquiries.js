@@ -98,6 +98,14 @@ function formatTargetPrice(price) {
   return `¥${num.toLocaleString()}`;
 }
 
+// 打样费（数字金额加 ¥ 前缀，非数字字符串原样转义展示，空值显示"-"）
+function formatSampleFee(fee) {
+  if (fee === null || fee === undefined || fee === '') return '-';
+  const num = Number(fee);
+  if (isNaN(num)) return escapeHtml(String(fee));
+  return `¥${num.toLocaleString()}`;
+}
+
 let inquirySearchTimer;
 function inquirySearch(val) {
   clearTimeout(inquirySearchTimer);
@@ -211,6 +219,9 @@ async function viewInquiryDetail(inquiryId) {
                 <th>交期</th>
                 <th>状态</th>
                 <th>报价时间</th>
+                <th>打样周期</th>
+                <th>打样费</th>
+                <th>工艺/尺寸描述</th>
               </tr>
             </thead>
             <tbody>
@@ -222,6 +233,9 @@ async function viewInquiryDetail(inquiryId) {
                   <td>${escapeHtml(q.lead_time || '-')}</td>
                   <td>${getStatusBadge(q.status)}</td>
                   <td>${formatDate(q.created_at)}</td>
+                  <td>${escapeHtml(q.sample_lead_time || '-')}</td>
+                  <td>${formatSampleFee(q.sample_fee)}</td>
+                  <td>${escapeHtml(q.spec_description || '-')}</td>
                 </tr>
               `).join('')}
             </tbody>
